@@ -1,130 +1,103 @@
-const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
+require('dotenv').config();
 
+// Register User
 const registerUser = async (req, res) => {
   try {
-    const { name, email, phone, password, role, location } = req.body;
-
-    // Check existing user
+    const { name, email, phone, password, role } = req.body;
+    
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.send({
-        status: 0,
-        message: "User already exists"
-      });
+      return res.status(400).json({ success: false, message: "User already exists" });
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
+    
     const user = new User({
       name,
       email,
       phone,
-      password: hashedPassword,
-      role: role || "explorer",
-      // ✅ save location if provided
-      location: location ? {
-        latitude: location.latitude,
-        longitude: location.longitude
-      } : undefined
+      password,
+      role: role || "explorer"
     });
-
+    
     await user.save();
-
-    // ✅ generate token immediately after register
+    
+    // Using JWT_SECRET (matches your .env)
     const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET || "secretkey",
-      { expiresIn: "7d" }
+      { userID: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
     );
-
-    // ✅ return user + token so frontend can auto-login
-    res.send({
-      status: 1,
-      message: "User registered successfully",
-      token: token,
+    
+    res.status(201).json({
+      success: true,
+      token,
       user: {
+        _id: user._id,
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role
       }
     });
-
   } catch (error) {
-    console.log(error); // ✅ log error for debugging
-    res.send({
-      status: 0,
-      message: "Error registering user"
-    });
+    console.error("Register error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// Login User
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-
+    
     const user = await User.findOne({ email });
+    
     if (!user) {
-      return res.send({
-        status: 0,
-        message: "User not found"
-      });
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.send({
-        status: 0,
-        message: "Invalid password"
-      });
+    
+    if (user.password !== password) {
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
-
+    
+    // Using JWT_SECRET (matches your .env)
     const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET || "secretkey",
-      { expiresIn: "7d" }
+      { userID: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
     );
-
-    res.send({
-      status: 1,
-      message: "Login successful",
-      token: token,
+    
+    res.json({
+      success: true,
+      token,
       user: {
+        _id: user._id,
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role
       }
     });
-
   } catch (error) {
-    console.log(error);
-    res.send({
-      status: 0,
-      message: "Login error"
-    });
+    console.error("Login error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// Get all users
 const getUsers = async (req, res) => {
   try {
     const users = await User.find().select("-password");
-    res.send({
-      status: 1,
-      data: users
-    });
+    res.json({ success: true, data: users });
   } catch (error) {
-    res.send({
-      status: 0,
-      message: "Error fetching users"
-    });
+    console.error("Get users error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-module.exports = {
-  registerUser,
+module.exports = { 
+  registerUser, 
   loginUser,
   getUsers
 };

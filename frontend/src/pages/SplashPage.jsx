@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useScrollReveal } from '../hooks/useScrollReveal'
 import { useLang } from '../context/LanguageContext'
+import { useAuth } from '../context/authcontext'
 import Footer from '../components/Footer'
 import LanguageToggle from '../components/Languagetoggle'
 import ThemeToggle from '../components/ThemeToggle'
 
-// ==================== FIXED HINDI TEXT (Proper Unicode) ====================
+// ==================== FIXED HINDI TEXT ====================
 const STEPS_EN = [
   { num: '01', icon: '🗺️', heading: 'Open Findy', desc: 'Launch the app and let it sense your location — instantly see what is alive around you.' },
   { num: '02', icon: '🔍', heading: 'Browse & Discover', desc: 'Filter by food, workers, live vendors. Every result is real, local, and near.' },
@@ -55,6 +56,8 @@ const CARDS_HI = [
 
 export default function SplashPage() {
   const { t, lang } = useLang()
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const revealRef = useScrollReveal()
   const pinnedRef = useRef(null)
   const splitRef = useRef(null)
@@ -65,6 +68,40 @@ export default function SplashPage() {
   const STEPS = lang === 'hi' ? STEPS_HI : STEPS_EN
   const FEATURES = lang === 'hi' ? FEATURES_HI : FEATURES_EN
   const CARDS = lang === 'hi' ? CARDS_HI : CARDS_EN
+
+  // Handle Explore button click - DIRECT NAVIGATION
+  const handleExplore = () => {
+    console.log("Explore clicked, user:", user)
+    
+    if (user) {
+      // User is logged in - go to appropriate dashboard
+      if (user.role === 'seller') {
+        navigate('/vendor-dashboard')
+      } else if (user.role === 'worker') {
+        navigate('/worker-dashboard')
+      } else {
+        navigate('/listings')
+      }
+    } else {
+      // Not logged in - go to login page
+      navigate('/login')
+    }
+  }
+
+  // Handle Start Exploring button click
+  const handleStartExploring = () => {
+    if (user) {
+      if (user.role === 'seller') {
+        navigate('/vendor-dashboard')
+      } else if (user.role === 'worker') {
+        navigate('/worker-dashboard')
+      } else {
+        navigate('/listings')
+      }
+    } else {
+      navigate('/login')
+    }
+  }
 
   // Progress bar
   useEffect(() => {
@@ -77,7 +114,7 @@ export default function SplashPage() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Pinned section driver with better step detection
+  // Pinned section driver
   useEffect(() => {
     const onScroll = () => {
       const el = pinnedRef.current
@@ -93,7 +130,7 @@ export default function SplashPage() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [STEPS.length])
 
-  // Feature visibility on scroll
+  // Feature visibility
   useEffect(() => {
     const onScroll = () => {
       const featureSection = document.querySelector('.feature-section')
@@ -107,7 +144,7 @@ export default function SplashPage() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Split-text word lighter with proper Hindi support
+  // Split-text effect
   useEffect(() => {
     const el = splitRef.current
     if (!el) return
@@ -196,7 +233,7 @@ export default function SplashPage() {
         <LanguageToggle />
       </div>
 
-      {/* ══ HERO ══════════════════════════════════════════════════ */}
+      {/* HERO SECTION */}
       <section style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
@@ -256,13 +293,14 @@ export default function SplashPage() {
           {t('splash.subtext')}
         </p>
 
+        {/* BUTTONS - FIXED */}
         <div style={{
           display: 'flex', gap: 12, marginTop: 40, flexWrap: 'wrap', justifyContent: 'center',
           opacity: 0, animation: 'fadeUp 0.8s 1.1s forwards',
         }}>
-          <Link to="/home" className="btn-primary" style={{ fontSize: 15, padding: '14px 30px' }}>
+          <button onClick={handleExplore} className="btn-primary" style={{ fontSize: 15, padding: '14px 30px' }}>
             {t('splash.exploreBtn')}
-          </Link>
+          </button>
           <Link to="/signup" className="btn-outline" style={{ fontSize: 15, padding: '14px 30px' }}>
             {t('splash.joinBtn')}
           </Link>
@@ -285,7 +323,7 @@ export default function SplashPage() {
         </div>
       </section>
 
-      {/* ══ MARQUEE ════════════════════════════════════════════════ */}
+      {/* MARQUEE */}
       <div style={{
         padding: '28px 0',
         borderTop: '1px solid var(--line)', 
@@ -309,7 +347,7 @@ export default function SplashPage() {
         </div>
       </div>
 
-      {/* ══ REVEAL SECTION 1 ═══════════════════════════════════════ */}
+      {/* REVEAL SECTION 1 */}
       <section style={{ padding: '120px 40px', background: 'var(--bg)' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -329,9 +367,9 @@ export default function SplashPage() {
             <p style={{ fontSize: 15, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 28 }}>
               {t('splash.cityDesc')}
             </p>
-            <Link to="/home" className="btn-primary">
+            <button onClick={handleStartExploring} className="btn-primary">
               {t('splash.startExploring')}
-            </Link>
+            </button>
           </div>
           <div className="card" style={{
             aspectRatio: '4/3', display: 'flex', alignItems: 'center',
@@ -349,7 +387,7 @@ export default function SplashPage() {
         </div>
       </section>
 
-      {/* ══ PINNED SCROLL STEPS (FIXED HINDI RENDERING) ════════════════════ */}
+      {/* PINNED SCROLL STEPS */}
       <section ref={pinnedRef} style={{ minHeight: '400vh', position: 'relative', background: 'var(--surface)' }}>
         <div style={{
           position: 'sticky', top: 0, height: '100vh', overflow: 'hidden',
@@ -421,20 +459,8 @@ export default function SplashPage() {
         </div>
       </section>
 
-      {/* ══ SPLIT TEXT ════════════════════════════════════════════ */}
-      
-
-      {/* ══ HORIZONTAL CARDS ══════════════════════════════════════ */}
+      {/* HORIZONTAL CARDS */}
       <section style={{ padding: '80px 0', background: 'var(--bg)' }}>
-        <h2 style={{
-          fontFamily: 'Syne, sans-serif', fontWeight: 700,
-          fontSize: 'clamp(28px, 4vw, 42px)',
-          letterSpacing: '-0.02em',
-          padding: '0 40px', marginBottom: 36,
-          color: 'var(--ink)'
-        }}>
-         
-        </h2>
         <div style={{
           display: 'flex', gap: 20, padding: '0 40px',
           overflowX: 'auto', scrollSnapType: 'x mandatory',
@@ -471,7 +497,7 @@ export default function SplashPage() {
         </div>
       </section>
 
-      {/* ══ REVEAL SECTION 2 — VENDORS ════════════════════════════ */}
+      {/* REVEAL SECTION 2 — VENDORS */}
       <section style={{ padding: '120px 40px', background: 'var(--bg)' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -517,7 +543,7 @@ export default function SplashPage() {
         </div>
       </section>
 
-      {/* ══ FEATURE LIST (with scroll animation) ═══════════════════════════ */}
+      {/* FEATURE LIST */}
       <section className="feature-section" style={{ padding: '60px 40px 100px', maxWidth: 900, margin: '0 auto', background: 'var(--bg)' }}>
         {FEATURES.map((f, i) => (
           <div
@@ -555,7 +581,7 @@ export default function SplashPage() {
         ))}
       </section>
 
-      {/* ══ CTA ═══════════════════════════════════════════════════ */}
+      {/* CTA */}
       <section style={{ 
         padding: '140px 40px', textAlign: 'center', 
         background: 'var(--ink)', position: 'relative', overflow: 'hidden' 
@@ -639,7 +665,7 @@ export default function SplashPage() {
         }
         .card {
           background: var(--surface);
-          border-radius: 24px;
+          borderRadius: 24px;
           transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
         .card:hover {

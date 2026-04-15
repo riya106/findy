@@ -11,18 +11,19 @@ const translations = {
     offline: 'Offline',
     
     nav: {
-      home: 'Home',
-      listings: 'Listings',
-      vendors: 'Vendors',
-      workers: 'Workers',
-      around: 'Around',
-      profile: 'Profile',
-      login: 'Login',
-      signup: 'Sign up',
-      dashboard: 'Dashboard',
-      liveVendors: 'Live Vendors',
-      reviews: 'Reviews',
-    },
+  home: 'Home',
+  listings: 'Listings',
+  vendors: 'Vendors',
+  workers: 'Workers',
+  around: 'Around',
+  profile: 'Profile',
+  login: 'Login',
+  signup: 'Sign up',
+  dashboard: 'Dashboard',
+  browseWorkers: 'Browse Workers',  // ← Add this
+  liveVendors: 'Live Vendors',
+  reviews: 'Reviews',
+},
     
     splash: {
       locationTag: 'Location-based discovery',
@@ -146,6 +147,12 @@ const translations = {
       creating: 'Creating account…',
       haveAccount: 'Already have an account?',
       signInLink: 'Sign in',
+      joinSub: 'Join our community',           // ← ADD THIS
+      namePlaceholder: 'Enter your full name',  // ← ADD THIS
+      phonePlaceholder: 'Enter your phone number', // ← ADD THIS
+      errorFill: 'Please fill all fields',      // ← ADD THIS
+      registerFailed: 'Registration failed. Please try again.', // ← ADD THIS
+      loginFailed: 'Login failed. Please check your credentials.', // ← ADD THIS
     },
     
     footer: {
@@ -164,20 +171,20 @@ const translations = {
     live: 'लाइव',
     offline: 'ऑफलाइन',
     
-    nav: {
-      home: 'होम',
-      listings: 'लिस्टिंग',
-      vendors: 'विक्रेता',
-      workers: 'कर्मचारी',
-      around: 'आस-पास',
-      profile: 'प्रोफ़ाइल',
-      login: 'लॉगिन',
-      signup: 'साइन अप',
-      dashboard: 'डैशबोर्ड',
-      liveVendors: 'लाइव विक्रेता',
-      reviews: 'समीक्षाएं',
-    },
-    
+  nav: {
+  home: 'होम',
+  listings: 'लिस्टिंग',
+  vendors: 'विक्रेता',
+  workers: 'कर्मचारी',
+  around: 'आस-पास',
+  profile: 'प्रोफ़ाइल',
+  login: 'लॉगिन',
+  signup: 'साइन अप',
+  dashboard: 'डैशबोर्ड',
+  browseWorkers: 'कर्मचारी खोजें',
+  liveVendors: 'लाइव विक्रेता',
+  reviews: 'समीक्षाएं',
+},
     splash: {
       locationTag: 'स्थान-आधारित खोज',
       heroLine1: 'खोजें',
@@ -300,6 +307,12 @@ const translations = {
       creating: 'खाता बन रहा है…',
       haveAccount: 'पहले से खाता है?',
       signInLink: 'साइन इन करें',
+      joinSub: 'हमारे समुदाय से जुड़ें',                    // ← ADD THIS
+      namePlaceholder: 'अपना पूरा नाम दर्ज करें',           // ← ADD THIS
+      phonePlaceholder: 'अपना फ़ोन नंबर दर्ज करें',         // ← ADD THIS
+      errorFill: 'कृपया सभी फ़ील्ड भरें',                  // ← ADD THIS
+      registerFailed: 'पंजीकरण विफल। कृपया पुनः प्रयास करें।', // ← ADD THIS
+      loginFailed: 'लॉगिन विफल। कृपया अपने क्रेडेंशियल जांचें।', // ← ADD THIS
     },
     
     footer: {

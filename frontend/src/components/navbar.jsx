@@ -22,7 +22,7 @@ export default function Navbar() {
     navigate('/')
   }
 
-  // Role-based nav links — labels from translation
+  // Role-based nav links
   const explorerLinks = [
     { to: '/listings', labelKey: 'nav.listings' },
     { to: '/vendors',  labelKey: 'nav.vendors'  },
@@ -37,9 +37,8 @@ export default function Navbar() {
   ]
 
   const workerLinks = [
-    { to: '/worker-dashboard', labelKey: 'nav.dashboard'    },
-    { to: '/worker-register',  labelKey: 'nav.myProfile'    },
-    { to: '/workers',          labelKey: 'nav.browseWorkers'},
+    { to: '/worker-dashboard', labelKey: 'nav.dashboard'     },
+    { to: '/workers',          labelKey: 'nav.browseWorkers' },
   ]
 
   const getLinks = () => {
@@ -78,8 +77,7 @@ export default function Navbar() {
       transition: 'all 0.3s ease',
       gap: 12,
     }}>
-
-      {/* ── Logo ── */}
+      {/* Logo */}
       <Link to={getHome()} style={{
         fontFamily: 'Syne, sans-serif',
         fontWeight: 800, fontSize: 24,
@@ -101,7 +99,7 @@ export default function Navbar() {
         {t('appName')}
       </Link>
 
-      {/* ── Nav Links ── */}
+      {/* Nav Links */}
       <div style={{
         display: 'flex', gap: 2, alignItems: 'center',
         background: 'rgba(16,185,129,0.06)',
@@ -134,18 +132,13 @@ export default function Navbar() {
         ))}
       </div>
 
-      {/* ── Right: Theme + Language + User ── */}
+      {/* Right: Theme + Language + User */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-
-        {/* Theme Toggle */}
         <ThemeToggle />
-
-        {/* Language Toggle */}
         <LanguageToggle />
 
         {user ? (
           <>
-            {/* Role badge */}
             <span style={{
               fontSize: 11, fontWeight: 600,
               padding: '4px 12px', borderRadius: 100,
@@ -158,7 +151,6 @@ export default function Navbar() {
               {badge.label}
             </span>
 
-            {/* Avatar */}
             <Link to="/profile" style={{
               width: 38, height: 38, borderRadius: '50%',
               background: 'linear-gradient(135deg, #10b981, #059669)',
@@ -174,7 +166,6 @@ export default function Navbar() {
               {user.name?.[0]?.toUpperCase() ?? 'U'}
             </Link>
 
-            {/* Logout */}
             <button onClick={handleLogout} style={{
               fontSize: 13, fontWeight: 500,
               padding: '7px 16px', borderRadius: 100,

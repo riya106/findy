@@ -1,18 +1,9 @@
-const express = require("express")
-const router = express.Router()
+const express = require("express");
+const router = express.Router();
+const checkUserAuth = require("../middleware/authMiddleware");
+const reviewController = require("../controllers/reviewController");
 
-const {
- addReview,
- getListingReviews
-} = require("../controllers/reviewController")
+router.post("/add", checkUserAuth, reviewController.addReview);
+router.get("/listing/:id", reviewController.getListingReviews);
 
-const checkUserAuth = require("../middleware/authMiddleware")
-
-
-/* Add Review */
-router.post("/add", checkUserAuth, addReview)
-
-/* Get Reviews by Listing */
-router.get("/listing/:id", getListingReviews)
-
-module.exports = router
+module.exports = router;
