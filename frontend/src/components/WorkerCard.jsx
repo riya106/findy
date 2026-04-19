@@ -5,16 +5,15 @@ import { useLang } from '../context/LanguageContext';
 const PROFESSION_EMOJI = {
   'Electrician': '⚡', 'Plumber': '🔧', 'Carpenter': '🪚',
   'Painter': '🎨', 'Mechanic': '🔩', 'Cleaner': '🧹',
-  'Mason': '🧱', 'Welder': '🔥', 'AC Technician': '❄️', 'Other': '👷',
+  'Mason': '🧱', 'Welder': '🔥', 'AC Technician': '❄️',
+  'Teacher': '📚', 'Coach': '🏋️', 'Driver': '🚗', 'Cook': '🍳',
+  'Other': '👤',
 };
 
 export default function WorkerCard({ worker, delay = 0 }) {
-  const emoji = PROFESSION_EMOJI[worker.profession] || '👷';
+  const emoji = PROFESSION_EMOJI[worker.profession] || '👤';
   const address = useAddress(worker.location?.lat, worker.location?.lng);
   const { t, lang } = useLang();
-
-  // Debug log to check if worker has ID
-  console.log('WorkerCard - Worker ID:', worker._id, 'Name:', worker.name);
 
   return (
     <Link to={`/workers/${worker._id}`} style={{ textDecoration: 'none' }}>
@@ -60,6 +59,11 @@ export default function WorkerCard({ worker, delay = 0 }) {
           <div style={{ fontSize: 12, color: 'var(--mint)', fontWeight: 500 }}>
             📍 {address}
           </div>
+          {worker.distance && (
+            <div style={{ fontSize: 11, color: 'var(--mint)', marginTop: 4 }}>
+              📏 {worker.distance < 1 ? `${Math.round(worker.distance * 1000)}m` : `${worker.distance.toFixed(1)}km`} away
+            </div>
+          )}
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>

@@ -81,7 +81,7 @@ export default function LoginPage() {
             fontWeight: 700, fontSize: 28, marginBottom: 8,
             color: 'var(--ink)'
           }}>
-            {t('auth.welcomeBack')} 👋
+            {t('auth.welcomeBack')} 
           </h1>
           <p style={{ fontSize: 14, color: "var(--muted)" }}>
             {t('auth.signInSub')}

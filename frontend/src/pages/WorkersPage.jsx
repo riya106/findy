@@ -2,38 +2,123 @@ import { useEffect, useState } from 'react'
 import { workersAPI } from '../services/api'
 import WorkerCard from '../components/WorkerCard'
 import { useLang } from '../context/LanguageContext'
+import { useAuth } from '../context/authcontext'
 import { Link } from 'react-router-dom'
+import { calculateDistance } from '../utils/distance'
 
-const PROFESSIONS_EN = ['All', 'Electrician', 'Plumber', 'Carpenter', 'Painter', 'Mechanic', 'Cleaner']
-const PROFESSIONS_HI = ['सभी', 'इलेक्ट्रीशियन', 'प्लम्बर', 'बढ़ई', 'पेंटर', 'मैकेनिक', 'सफाईकर्मी']
+const PROFESSIONS_EN = [
+  'All', 'Electrician', 'Plumber', 'Carpenter', 'Painter', 
+  'Mechanic', 'Cleaner', 'AC Technician', 'Teacher', 'Coach', 
+  'Driver', 'Cook', 'Other'
+]
+const PROFESSIONS_HI = [
+  'सभी', 'इलेक्ट्रीशियन', 'प्लम्बर', 'बढ़ई', 'पेंटर', 
+  'मैकेनिक', 'सफाईकर्मी', 'एसी तकनीशियन', 'शिक्षक', 'कोच', 
+  'ड्राइवर', 'रसोइया', 'अन्य'
+]
 
 export default function WorkersPage() {
   const { t, lang } = useLang()
+  const { user } = useAuth()
 
-  const [workers, setWorkers] = useState([])
+  const [allWorkers, setAllWorkers] = useState([])
   const [filtered, setFiltered] = useState([])
   const [active, setActive] = useState('All')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [radius, setRadius] = useState(20)
+  const [sortBy, setSortBy] = useState('distance')
 
   const PROFESSIONS = lang === 'hi' ? PROFESSIONS_HI : PROFESSIONS_EN
   const EN_PROFESSIONS = PROFESSIONS_EN
 
+  const radiusOptions = [
+    { value: 5, label: '5 km' },
+    { value: 10, label: '10 km' },
+    { value: 20, label: '20 km' },
+    { value: 50, label: '50 km' },
+    { value: 70, label: '70 km' },
+    { value: 100, label: '100 km' }
+  ]
+
   useEffect(() => {
     fetchWorkers()
-  }, [])
+  }, [user?.savedLocation, radius, sortBy])
 
   const fetchWorkers = async () => {
+    setLoading(true)
     try {
       const response = await workersAPI.getAll()
-      const workersData = response.data?.data || response.data || []
-      setWorkers(workersData)
-      setFiltered(workersData)
+      const items = response.data?.data || response.data || []
+      
+      console.log("Total workers fetched:", items.length)
+      console.log("User location:", user?.savedLocation)
+      console.log("Radius filter:", radius, "km")
+      
+      const filteredByDistance = filterWorkersByDistance(items, user?.savedLocation, radius)
+      const sorted = sortWorkers(filteredByDistance, sortBy)
+      
+      console.log("Workers after distance filter:", filteredByDistance.length)
+      
+      setAllWorkers(sorted)
+      setFiltered(sorted)
     } catch (err) {
       console.error('Error fetching workers:', err)
-      setError(lang === 'hi' ? 'कामगार लोड नहीं हो सके' : 'Could not load workers.')
+      setError(lang === 'hi' ? 'प्रोफेशनल लोड नहीं हो सके' : 'Could not load professionals.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const filterWorkersByDistance = (workersList, userLocation, radiusKm) => {
+    // If no user location, return all workers
+    if (!userLocation?.lat || !userLocation?.lng) {
+      console.log("No user location found, showing all workers")
+      return workersList
+    }
+    
+    const filtered = workersList.filter(worker => {
+      const workerLat = worker.location?.lat
+      const workerLng = worker.location?.lng
+      
+      // If worker has no location, include them (can't filter by distance)
+      if (!workerLat || !workerLng) {
+        return true
+      }
+      
+      const distance = calculateDistance(
+        userLocation.lat, userLocation.lng,
+        workerLat, workerLng
+      )
+      
+      return distance <= radiusKm
+    })
+    
+    // Add distance to each worker
+    return filtered.map(worker => {
+      const workerLat = worker.location?.lat
+      const workerLng = worker.location?.lng
+      if (workerLat && workerLng && userLocation) {
+        worker.distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          workerLat, workerLng
+        )
+      }
+      return worker
+    })
+  }
+
+  const sortWorkers = (workersList, sortType) => {
+    const sorted = [...workersList]
+    switch(sortType) {
+      case 'distance':
+        return sorted.sort((a, b) => (a.distance || 999) - (b.distance || 999))
+      case 'rating':
+        return sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      case 'experience':
+        return sorted.sort((a, b) => (b.experience || 0) - (a.experience || 0))
+      default:
+        return sorted
     }
   }
 
@@ -41,13 +126,45 @@ export default function WorkersPage() {
     setActive(f)
     const filterVal = EN_PROFESSIONS[idx]
     if (filterVal === 'All' || f === 'सभी') {
-      setFiltered(workers)
+      setFiltered(allWorkers)
     } else {
-      setFiltered(workers.filter(
+      setFiltered(allWorkers.filter(
         w => w.profession?.toLowerCase() === filterVal.toLowerCase()
       ))
     }
   }
+
+  const handleRadiusChange = (newRadius) => {
+    console.log("Radius changed to:", newRadius)
+    setRadius(newRadius)
+    // fetchWorkers will be called automatically due to useEffect dependency
+  }
+
+  const handleSortChange = (newSort) => {
+    setSortBy(newSort)
+    const sorted = sortWorkers(filtered, newSort)
+    setFiltered(sorted)
+  }
+
+  const getStats = () => {
+    const total = allWorkers.length
+    const avgRating = allWorkers.reduce((sum, w) => sum + (w.rating || 0), 0) / total || 0
+    const professions = [...new Set(allWorkers.map(w => w.profession))].length
+    return { total, avgRating: avgRating.toFixed(1), professions }
+  }
+
+  const stats = getStats()
+
+  // Debug: Log workers with distances
+  useEffect(() => {
+    if (allWorkers.length > 0) {
+      console.log("Workers with distances:", allWorkers.map(w => ({ 
+        name: w.name, 
+        distance: w.distance,
+        profession: w.profession 
+      })))
+    }
+  }, [allWorkers])
 
   return (
     <div style={{
@@ -56,16 +173,55 @@ export default function WorkersPage() {
       paddingTop: 88
     }}>
       
-      {/* ==================== BEAUTIFUL INDIAN-THEMED HEADER FOR WORKERS ==================== */}
+      {user?.savedLocation?.city && (
+        <div style={{ padding: "0 48px 20px" }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            background: 'var(--mint-soft)',
+            padding: '12px 20px',
+            borderRadius: 100,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>📍</span>
+              <span>Showing professionals within <strong>{radius} km</strong> of <strong>{user.savedLocation.area || user.savedLocation.city}</strong></span>
+              <Link to="/profile" style={{ color: 'var(--mint)', textDecoration: 'none', marginLeft: 4 }}>(Change)</Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12 }}>Radius:</span>
+              <select 
+                value={radius} 
+                onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  fontSize: 12,
+                  cursor: 'pointer'
+                }}
+              >
+                {radiusOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: '0 48px 32px' }}>
         <div style={{
           borderRadius: 28,
           overflow: 'hidden',
           position: 'relative',
-          minHeight: 360,
+          minHeight: 320,
           boxShadow: '0 20px 40px -12px rgba(0,0,0,0.25)',
         }}>
-          {/* Background Image - Indian skilled workers / craftsmanship */}
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -74,58 +230,13 @@ export default function WorkersPage() {
             backgroundPosition: 'center 35%',
           }} />
           
-          {/* Gradient Overlay - Warm earthy tones for workers */}
           <div style={{
             position: 'absolute',
             inset: 0,
             background: 'linear-gradient(135deg, rgba(210, 120, 40, 0.85) 0%, rgba(230, 100, 30, 0.75) 50%, rgba(15,184,146,0.4) 100%)',
           }} />
           
-          {/* Decorative Indian Pattern Elements */}
-          <div style={{
-            position: 'absolute',
-            top: -50,
-            right: -50,
-            width: 220,
-            height: 220,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.15) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: -30,
-            left: -30,
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.1) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          
-          {/* Tool/Work inspired decorative elements */}
-          <div style={{
-            position: 'absolute',
-            top: '20%',
-            right: '15%',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: 'rgba(255,215,0,0.4)',
-            boxShadow: '0 0 0 12px rgba(255,215,0,0.1), 0 0 0 24px rgba(255,215,0,0.05)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: '25%',
-            left: '10%',
-            width: 5,
-            height: 5,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.3)',
-            boxShadow: '0 0 0 10px rgba(255,255,255,0.08), 0 0 0 20px rgba(255,255,255,0.04)',
-          }} />
-          
-          {/* Content */}
           <div style={{ position: 'relative', zIndex: 2, padding: '50px 40px' }}>
-            {/* Badge */}
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -137,13 +248,12 @@ export default function WorkersPage() {
               marginBottom: 24,
               border: '1px solid rgba(255,255,255,0.3)',
             }}>
-              <span style={{ fontSize: 20 }}>👷</span>
+              <span style={{ fontSize: 20 }}>👥</span>
               <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', color: '#fff' }}>
-                SKILLED PROFESSIONALS
+                FIND PROFESSIONALS
               </span>
             </div>
             
-            {/* Main Title */}
             <h1 style={{
               fontFamily: "Syne, sans-serif",
               fontWeight: 800,
@@ -160,7 +270,7 @@ export default function WorkersPage() {
                 display: 'inline-block',
                 paddingBottom: '4px'
               }}>
-                Skilled Workers
+                Skilled Professionals
               </span>
             </h1>
             
@@ -171,21 +281,16 @@ export default function WorkersPage() {
               marginBottom: 24,
               lineHeight: 1.5,
             }}>
-              Hire trusted electricians, plumbers, carpenters and more from your neighborhood
+              Hire trusted electricians, plumbers, teachers, coaches and more from your neighborhood
             </p>
             
-            {/* Stats Row */}
             <div style={{
               display: 'flex',
-              gap: 30,
+              gap: 40,
               marginTop: 20,
               flexWrap: 'wrap',
             }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 44,
                   height: 44,
@@ -196,20 +301,14 @@ export default function WorkersPage() {
                   justifyContent: 'center',
                   fontSize: 22,
                   backdropFilter: 'blur(8px)',
-                }}>
-                  👷
-                </div>
+                }}>👥</div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{workers.length}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Workers Available</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{stats.total}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Professionals</div>
                 </div>
               </div>
               
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 44,
                   height: 44,
@@ -220,36 +319,28 @@ export default function WorkersPage() {
                   justifyContent: 'center',
                   fontSize: 22,
                   backdropFilter: 'blur(8px)',
-                }}>
-                  ⚡
-                </div>
+                }}>⭐</div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>10+</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Professions</div>
-                </div>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.15)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  backdropFilter: 'blur(8px)',
-                }}>
-                  ⭐
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>4.8+</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{stats.avgRating}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Avg Rating</div>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  background: 'rgba(255,255,255,0.15)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 22,
+                  backdropFilter: 'blur(8px)',
+                }}>📚</div>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{stats.professions}+</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Services</div>
                 </div>
               </div>
             </div>
@@ -257,39 +348,67 @@ export default function WorkersPage() {
         </div>
       </div>
 
-      {/* Filter Buttons */}
+      {/* Filter and Sort Bar - REMOVED Register Button */}
       <div style={{
         display: 'flex',
-        gap: 8,
-        padding: '0 48px 28px',
-        overflowX: 'auto',
-        scrollbarWidth: 'none'
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16,
+        padding: '0 48px 20px',
+        marginBottom: 8
       }}>
-        {PROFESSIONS.map((p, idx) => (
-          <button
-            key={p}
-            onClick={() => applyFilter(p, idx)}
-            style={{
-              padding: '10px 22px',
-              borderRadius: 100,
-              fontSize: 14,
-              fontWeight: active === p ? 600 : 500,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              border: 'none',
-              background: active === p ? 'var(--gradient-hero)' : 'var(--surface)',
-              color: active === p ? '#fff' : 'var(--muted)',
-              boxShadow: active === p ? 'var(--shadow)' : 'none',
-              transition: 'all 0.2s',
-            }}
-          >
-            {p}
-          </button>
-        ))}
+        <div style={{
+          display: 'flex',
+          gap: 8,
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          flex: 1
+        }}>
+          {PROFESSIONS.map((p, idx) => (
+            <button
+              key={p}
+              onClick={() => applyFilter(p, idx)}
+              style={{
+                padding: '8px 18px',
+                borderRadius: 100,
+                fontSize: 13,
+                fontWeight: active === p ? 600 : 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                border: 'none',
+                background: active === p ? 'var(--gradient-hero)' : 'var(--surface)',
+                color: active === p ? '#fff' : 'var(--muted)',
+                boxShadow: active === p ? 'var(--shadow)' : 'none',
+                transition: 'all 0.2s',
+              }}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={sortBy}
+          onChange={(e) => handleSortChange(e.target.value)}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 100,
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            fontSize: 13,
+            cursor: 'pointer',
+            color: 'var(--ink)'
+          }}
+        >
+          <option value="distance">Sort by: Nearest First</option>
+          <option value="rating">Sort by: Highest Rated</option>
+          <option value="experience">Sort by: Most Experienced</option>
+        </select>
       </div>
 
-      {/* Results Count & Register Button */}
-      {!loading && workers.length > 0 && (
+      {/* Results Count - Removed Register Button */}
+      {!loading && allWorkers.length > 0 && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -300,34 +419,21 @@ export default function WorkersPage() {
         }}>
           <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>
             {lang === 'hi'
-              ? <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> कर्मचारी मिले</>
-              : <>Showing <strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> worker{filtered.length !== 1 ? 's' : ''}</>
+              ? <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> प्रोफेशनल मिले</>
+              : <>Found <strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> professional{filtered.length !== 1 ? 's' : ''} within {radius} km</>
             }
           </p>
-          <Link to="/worker-register" style={{
-            fontSize: 13,
-            fontWeight: 600,
-            padding: '8px 18px',
-            borderRadius: 100,
-            background: 'rgba(16,185,129,0.1)',
-            color: 'var(--mint)',
-            textDecoration: 'none',
-            transition: 'all 0.2s'
-          }}>
-            + {lang === 'hi' ? 'कर्मचारी रजिस्टर करें' : 'Register as Worker'}
-          </Link>
+          {/* Register button removed */}
         </div>
       )}
 
-      {/* Loading State */}
       {loading && (
         <div style={{ textAlign: 'center', padding: '60px', color: 'var(--muted)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
-          <p>Loading workers...</p>
+          <p>Loading professionals...</p>
         </div>
       )}
 
-      {/* Error State */}
       {error && (
         <div style={{
           margin: '0 48px 20px',
@@ -341,7 +447,6 @@ export default function WorkersPage() {
         </div>
       )}
 
-      {/* Workers Grid */}
       {!loading && filtered.length > 0 && (
         <div style={{
           padding: '0 48px 60px',
@@ -355,7 +460,6 @@ export default function WorkersPage() {
         </div>
       )}
 
-      {/* Empty State */}
       {!loading && !error && filtered.length === 0 && (
         <div style={{
           textAlign: 'center',
@@ -365,18 +469,21 @@ export default function WorkersPage() {
           borderRadius: 24,
           border: '1px dashed var(--border)'
         }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>🔧</div>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🔍</div>
           <h3 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 20, marginBottom: 8, color: 'var(--ink)' }}>
-            {lang === 'hi' ? 'कोई कर्मचारी नहीं मिला' : 'No workers found'}
+            No professionals found within {radius} km
           </h3>
-          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
-            {lang === 'hi'
-              ? 'अभी कोई कर्मचारी पंजीकृत नहीं है'
-              : 'No workers registered yet'}
+          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 16 }}>
+            Try increasing the radius or changing your location
           </p>
-          <Link to="/worker-register" className="btn-primary" style={{ display: 'inline-block' }}>
-            {lang === 'hi' ? 'पहले कर्मचारी बनें' : 'Be the first worker'}
-          </Link>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => handleRadiusChange(50)} className="btn-outline">
+              Increase to 50 km
+            </button>
+            <Link to="/profile" className="btn-primary">
+              Change Location
+            </Link>
+          </div>
         </div>
       )}
     </div>

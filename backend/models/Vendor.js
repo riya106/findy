@@ -80,11 +80,13 @@ const vendorSchema = new mongoose.Schema({
 
 // Index for location-based queries
 vendorSchema.index({ "location.lat": 1, "location.lng": 1 });
+vendorSchema.index({ isLive: 1, "location.lat": 1, "location.lng": 1 });
 
-// Method to update rating
+// Method to update rating - FIXED: use 'vendor' field instead of 'vendorId'
 vendorSchema.methods.updateRating = async function() {
   const Review = mongoose.model('Review');
-  const reviews = await Review.find({ vendorId: this._id });
+  // Fixed: Use 'vendor' field (not 'vendorId')
+  const reviews = await Review.find({ vendor: this._id });
   
   if (reviews.length > 0) {
     const total = reviews.reduce((sum, review) => sum + review.rating, 0);
@@ -96,6 +98,16 @@ vendorSchema.methods.updateRating = async function() {
   }
   
   await this.save();
+  return this;
+};
+
+// Static method to update rating by ID
+vendorSchema.statics.updateRatingById = async function(vendorId) {
+  const vendor = await this.findById(vendorId);
+  if (vendor) {
+    await vendor.updateRating();
+  }
+  return vendor;
 };
 
 module.exports = mongoose.model("Vendor", vendorSchema);

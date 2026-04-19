@@ -2,41 +2,88 @@ import { useEffect, useState } from "react"
 import { listingsAPI } from "../services/api"
 import ListingCard from "../components/ListingCard"
 import { useLang } from '../context/LanguageContext'
+import { useAuth } from '../context/authcontext'
+import { Link } from "react-router-dom"
+import { calculateDistance } from "../utils/distance"
 
 const FILTERS_EN = ["All", "Food", "Services", "Shops", "Tourism", "Health"]
 const FILTERS_HI = ["सभी", "खाना", "सेवाएं", "दुकानें", "पर्यटन", "स्वास्थ्य"]
 
 export default function ListingsPage() {
   const { t, lang } = useLang()
-  const FILTERS = lang === 'hi' ? FILTERS_HI : FILTERS_EN
-  const EN_FILTERS = FILTERS_EN
-
-  const [listings, setListings] = useState([])
+  const { user } = useAuth()
+  
+  const [allListings, setAllListings] = useState([])
   const [filtered, setFiltered] = useState([])
   const [active, setActive] = useState("All")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [radius, setRadius] = useState(10)
+
+  const FILTERS = lang === 'hi' ? FILTERS_HI : FILTERS_EN
+  const EN_FILTERS = FILTERS_EN
 
   useEffect(() => {
-    listingsAPI.getAll()
-      .then((res) => {
-        const items = res.data?.data || []
-        setListings(items)
-        setFiltered(items)
-      })
-      .catch(() => setError(t('listings.loadingError') || "Could not load listings."))
-      .finally(() => setLoading(false))
-  }, [t])
+    fetchListings()
+  }, [user?.savedLocation, radius])
+
+  const fetchListings = async () => {
+    setLoading(true)
+    try {
+      const response = await listingsAPI.getAll()
+      const items = response.data?.data || []
+      
+      const filteredByDistance = filterListingsByDistance(items, user?.savedLocation, radius)
+      
+      setAllListings(filteredByDistance)
+      setFiltered(filteredByDistance)
+    } catch (err) {
+      setError(t('listings.loadingError') || "Could not load listings.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filterListingsByDistance = (listingsList, userLocation, radiusKm) => {
+    if (!userLocation?.lat || !userLocation?.lng) {
+      return listingsList
+    }
+    
+    return listingsList.filter(listing => {
+      // Get coordinates from listing location
+      const listingLat = listing.location?.coordinates?.[1]
+      const listingLng = listing.location?.coordinates?.[0]
+      
+      if (listingLat && listingLng) {
+        const distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          listingLat, listingLng
+        )
+        return distance <= radiusKm
+      }
+      return true
+    }).map(listing => {
+      const listingLat = listing.location?.coordinates?.[1]
+      const listingLng = listing.location?.coordinates?.[0]
+      if (listingLat && listingLng) {
+        listing.distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          listingLat, listingLng
+        )
+      }
+      return listing
+    }).sort((a, b) => (a.distance || 999) - (b.distance || 999))
+  }
 
   const applyFilter = (f, idx) => {
     setActive(f)
     const filterVal = EN_FILTERS[idx]
     if (filterVal === "All" || f === "सभी") {
-      setFiltered(listings)
+      setFiltered(allListings)
       return
     }
     setFiltered(
-      listings.filter(
+      allListings.filter(
         (l) => l.category?.toLowerCase() === filterVal.toLowerCase()
       )
     )
@@ -49,16 +96,57 @@ export default function ListingsPage() {
       paddingTop: 88
     }}>
       
-      {/* ==================== BEAUTIFUL INDIAN-THEMED HEADER FOR LISTINGS ==================== */}
+      {/* Location Badge with Radius Selector */}
+      {user?.savedLocation?.city && (
+        <div style={{ padding: "0 48px 20px" }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            background: 'var(--mint-soft)',
+            padding: '12px 20px',
+            borderRadius: 100,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>📍</span>
+              Showing listings within <strong>{radius} km</strong> of <strong>{user.savedLocation.area || user.savedLocation.city}</strong>
+              <Link to="/profile" style={{ color: 'var(--mint)', textDecoration: 'none', marginLeft: 4 }}>(Change)</Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12 }}>Radius:</span>
+              <select 
+                value={radius} 
+                onChange={(e) => setRadius(Number(e.target.value))}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  fontSize: 12
+                }}
+              >
+                <option value={5}>5 km</option>
+                <option value={10}>10 km</option>
+                <option value={20}>20 km</option>
+                <option value={50}>50 km</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HERO HEADER */}
       <div style={{ padding: "0 48px 28px" }}>
         <div style={{
           borderRadius: 28,
           overflow: "hidden",
           position: "relative",
-          minHeight: 360,
+          minHeight: 320,
           boxShadow: '0 20px 40px -12px rgba(0,0,0,0.25)',
         }}>
-          {/* Background Image - Indian Street Food / Market */}
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -67,58 +155,13 @@ export default function ListingsPage() {
             backgroundPosition: 'center 40%',
           }} />
           
-          {/* Gradient Overlay - Food/Culture theme */}
           <div style={{
             position: 'absolute',
             inset: 0,
             background: 'linear-gradient(135deg, rgba(210, 80, 40, 0.85) 0%, rgba(230, 100, 30, 0.75) 50%, rgba(15,184,146,0.4) 100%)',
           }} />
           
-          {/* Decorative Indian Pattern Elements */}
-          <div style={{
-            position: 'absolute',
-            top: -50,
-            right: -50,
-            width: 220,
-            height: 220,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.15) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: -30,
-            left: -30,
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.1) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          
-          {/* Decorative dots - Food inspired */}
-          <div style={{
-            position: 'absolute',
-            top: '20%',
-            right: '15%',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: 'rgba(255,215,0,0.4)',
-            boxShadow: '0 0 0 12px rgba(255,215,0,0.1), 0 0 0 24px rgba(255,215,0,0.05)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: '25%',
-            left: '10%',
-            width: 5,
-            height: 5,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.3)',
-            boxShadow: '0 0 0 10px rgba(255,255,255,0.08), 0 0 0 20px rgba(255,255,255,0.04)',
-          }} />
-          
-          {/* Content */}
           <div style={{ position: 'relative', zIndex: 2, padding: '50px 40px' }}>
-            {/* Badge */}
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -136,7 +179,6 @@ export default function ListingsPage() {
               </span>
             </div>
             
-            {/* Main Title */}
             <h1 style={{
               fontFamily: "Syne, sans-serif",
               fontWeight: 800,
@@ -164,88 +206,8 @@ export default function ListingsPage() {
               marginBottom: 24,
               lineHeight: 1.5,
             }}>
-              Explore street food, local shops, and authentic services in your neighborhood
+              Explore street food, local shops, and authentic services within {radius} km of your location
             </p>
-            
-            {/* Stats Row */}
-            <div style={{
-              display: 'flex',
-              gap: 30,
-              marginTop: 20,
-              flexWrap: 'wrap',
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.15)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  backdropFilter: 'blur(8px)',
-                }}>
-                  🍽️
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{listings.filter(l => l.category === 'Food').length}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Food Stalls</div>
-                </div>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.15)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  backdropFilter: 'blur(8px)',
-                }}>
-                  🛍️
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{listings.length}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Total Listings</div>
-                </div>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.15)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  backdropFilter: 'blur(8px)',
-                }}>
-                  ⭐
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>4.5+</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Avg Rating</div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -290,12 +252,11 @@ export default function ListingsPage() {
         }}>
           {lang === 'hi' 
             ? <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> लिस्टिंग मिलीं</>
-            : <>Showing <strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> listing{filtered.length !== 1 ? 's' : ''}</>
+            : <>Found <strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> listing{filtered.length !== 1 ? 's' : ''} within {radius} km</>
           }
         </div>
       )}
 
-      {/* LOADING STATE */}
       {loading && (
         <div style={{ textAlign: "center", padding: "60px", color: "var(--muted)" }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
@@ -303,7 +264,6 @@ export default function ListingsPage() {
         </div>
       )}
 
-      {/* ERROR STATE */}
       {error && (
         <div style={{
           margin: "0 48px 20px",
@@ -318,7 +278,6 @@ export default function ListingsPage() {
         </div>
       )}
 
-      {/* LISTINGS GRID */}
       {!loading && filtered.length > 0 && (
         <div style={{
           padding: "8px 48px 60px",
@@ -327,16 +286,11 @@ export default function ListingsPage() {
           gap: 24
         }}>
           {Array.isArray(filtered) && filtered.map((l, i) => (
-            <ListingCard
-              key={l._id || i}
-              listing={l}
-              delay={i * 0.05}
-            />
+            <ListingCard key={l._id || i} listing={l} delay={i * 0.05} />
           ))}
         </div>
       )}
 
-      {/* EMPTY STATE */}
       {!loading && filtered.length === 0 && (
         <div style={{
           textAlign: "center",
@@ -354,13 +308,19 @@ export default function ListingsPage() {
             marginBottom: 8,
             color: "var(--ink)"
           }}>
-            {t('listings.noListings')}
+            No listings found within {radius} km
           </h3>
-          <p style={{ fontSize: 14, color: "var(--muted)" }}>
-            {lang === 'hi'
-              ? 'कोई लिस्टिंग नहीं मिली। कृपया बाद में जांचें।'
-              : 'No listings found. Please check back later.'}
+          <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 16 }}>
+            Try increasing the radius or changing your location
           </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setRadius(20)} className="btn-outline">
+              Increase to 20 km
+            </button>
+            <Link to="/profile" className="btn-primary">
+              Change Location
+            </Link>
+          </div>
         </div>
       )}
     </div>

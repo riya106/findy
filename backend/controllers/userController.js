@@ -5,7 +5,7 @@ require('dotenv').config();
 // Register User
 const registerUser = async (req, res) => {
   try {
-    const { name, email, phone, password, role } = req.body;
+    const { name, email, phone, password, role, savedLocation } = req.body;
     
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -17,12 +17,22 @@ const registerUser = async (req, res) => {
       email,
       phone,
       password,
-      role: role || "explorer"
+      role: role || "explorer",
+      savedLocation: savedLocation || {
+        fullAddress: "",
+        pincode: "",
+        city: "",
+        district: "",
+        state: "",
+        area: "",
+        landmark: "",
+        lat: null,
+        lng: null
+      }
     });
     
     await user.save();
     
-    // Using JWT_SECRET (matches your .env)
     const token = jwt.sign(
       { userID: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
@@ -37,7 +47,8 @@ const registerUser = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        savedLocation: user.savedLocation
       }
     });
   } catch (error) {
@@ -61,7 +72,6 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
     
-    // Using JWT_SECRET (matches your .env)
     const token = jwt.sign(
       { userID: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
@@ -76,7 +86,8 @@ const loginUser = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        savedLocation: user.savedLocation
       }
     });
   } catch (error) {
@@ -96,8 +107,94 @@ const getUsers = async (req, res) => {
   }
 };
 
+// Update User Location
+const updateUserLocation = async (req, res) => {
+  try {
+    console.log("📍 Update location request received");
+    console.log("📍 User ID:", req.user?.id);
+    console.log("📍 Request body:", req.body);
+    
+    const { fullAddress, pincode, city, district, state, area, landmark, lat, lng } = req.body;
+    
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    
+    // Update location
+    user.savedLocation = {
+      fullAddress: fullAddress || user.savedLocation?.fullAddress || "",
+      pincode: pincode || user.savedLocation?.pincode || "",
+      city: city || user.savedLocation?.city || "",
+      district: district || user.savedLocation?.district || "",
+      state: state || user.savedLocation?.state || "",
+      area: area || user.savedLocation?.area || "",
+      landmark: landmark || user.savedLocation?.landmark || "",
+      lat: lat || user.savedLocation?.lat || null,
+      lng: lng || user.savedLocation?.lng || null,
+      updatedAt: new Date()
+    };
+    
+    await user.save();
+    
+    console.log("✅ Location updated successfully");
+    
+    res.json({
+      success: true,
+      message: "Location updated successfully",
+      savedLocation: user.savedLocation
+    });
+  } catch (error) {
+    console.error("Update location error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get User Location
+const getUserLocation = async (req, res) => {
+  try {
+    console.log("📍 Get location request received");
+    console.log("📍 User ID:", req.user?.id);
+    
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    
+    res.json({
+      success: true,
+      savedLocation: user.savedLocation || {
+        fullAddress: "",
+        pincode: "",
+        city: "",
+        district: "",
+        state: "",
+        area: "",
+        landmark: "",
+        lat: null,
+        lng: null
+      }
+    });
+  } catch (error) {
+    console.error("Get location error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = { 
   registerUser, 
-  loginUser,
-  getUsers
+  loginUser, 
+  getUsers,
+  updateUserLocation,
+  getUserLocation
 };

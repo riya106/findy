@@ -19,7 +19,7 @@ import ListingDetailPage from "./pages/ListingDetailPage"
 import VendorsPage from "./pages/VendorsPage"
 import VendorRegisterPage from "./pages/VendorRegisterPage"
 import VendorDashboardPage from "./pages/VendorDashboardPage"
-import VendorReviewsPage from "./pages/VendorReviewsPage"
+// import VendorReviewsPage from "./pages/VendorReviewsPage"  // ← REMOVED - Reviews now in Vendor Detail Page
 import VendorDetailPage from "./pages/VendorDetailPage"
 
 import WorkersPage from "./pages/WorkersPage"
@@ -125,7 +125,7 @@ function Layout() {
         <Route path="/vendors/:id" element={<Protected><VendorDetailPage /></Protected>} />
         <Route path="/vendor-register" element={<Protected><VendorRegisterPage /></Protected>} />
         <Route path="/vendor-dashboard" element={<Protected><VendorDashboardPage /></Protected>} />
-        <Route path="/vendor-reviews" element={<Protected><VendorReviewsPage /></Protected>} />
+        {/* VendorReviewsPage route removed - reviews now in VendorDetailPage */}
 
         {/* Workers */}
         <Route path="/workers" element={<Protected><WorkersPage /></Protected>} />

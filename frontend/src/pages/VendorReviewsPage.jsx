@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/authcontext'
 import { useLang } from '../context/LanguageContext'
-import { listingsAPI, reviewsAPI } from '../services/api'
+import { vendorsAPI, reviewsAPI } from '../services/api'
 
 function ReviewCard({ review }) {
-  const { t } = useLang()
+  const { lang } = useLang()
   const stars = Math.min(5, Math.max(1, Math.round(review.rating ?? 5)))
   
   return (
@@ -43,7 +43,9 @@ function ReviewCard({ review }) {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 8
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
@@ -53,25 +55,19 @@ function ReviewCard({ review }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontSize: 13
           }}>
-            {(review.user?.name || review.name || 'A')[0].toUpperCase()}
+            {(review.user?.name || review.userName || 'A')[0].toUpperCase()}
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
-            {review.user?.name || review.name || 'Anonymous'}
+            {review.user?.name || review.userName || 'Anonymous'}
           </span>
         </div>
 
-        {review.listingTitle && (
-          <span style={{
-            fontSize: 11,
-            background: 'var(--mint-soft)',
-            color: 'var(--mint)',
-            padding: '3px 10px',
-            borderRadius: 100,
-            fontWeight: 500
-          }}>
-            {review.listingTitle}
-          </span>
-        )}
+        <span style={{
+          fontSize: 11,
+          color: 'var(--muted)'
+        }}>
+          {review.createdAt ? new Date(review.createdAt).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-US') : 'Recently'}
+        </span>
       </div>
     </div>
   )
@@ -81,39 +77,42 @@ export default function VendorReviewsPage() {
   const { user } = useAuth()
   const { t, lang } = useLang()
   const [reviews, setReviews] = useState([])
+  const [vendor, setVendor] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
 
   useEffect(() => {
-    fetchAllReviews()
+    fetchVendorAndReviews()
   }, [])
 
-  const fetchAllReviews = async () => {
+  const fetchVendorAndReviews = async () => {
     try {
-      const res = await listingsAPI.getAll()
-      const all = res.data?.data || []
-      const userId = user?.id || user?._id
-      const mine = all.filter(l => String(l.sellerId) === String(userId))
-
-      const allReviews = []
-      for (const listing of mine) {
-        const r = await reviewsAPI.getForListing(listing._id)
-        const listingReviews = (r.data?.data || []).map(rev => ({
-          ...rev,
-          listingTitle: listing.title
-        }))
-        allReviews.push(...listingReviews)
+      setLoading(true)
+      
+      // First, get the vendor profile for the logged-in user
+      const vendorRes = await vendorsAPI.getMyVendor()
+      const vendorData = vendorRes.data?.data || vendorRes.data
+      
+      if (vendorData && vendorData._id) {
+        setVendor(vendorData)
+        
+        // Fetch reviews for this vendor
+        const reviewsRes = await reviewsAPI.getForVendor(vendorData._id)
+        const reviewsData = reviewsRes.data?.data || reviewsRes.data || []
+        setReviews(reviewsData)
+      } else {
+        setReviews([])
       }
-      setReviews(allReviews)
-    } catch (e) {
-      console.log('Error fetching reviews', e)
+    } catch (err) {
+      console.error('Error fetching vendor reviews:', err)
+      setReviews([])
     } finally {
       setLoading(false)
     }
   }
 
   const avgRating = reviews.length
-    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+    ? (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)
     : 0
 
   const FILTERS = lang === 'hi' ? ['सभी', '5★', '4★', '3★', '2★', '1★'] : ['All', '5★', '4★', '3★', '2★', '1★']
@@ -121,6 +120,22 @@ export default function VendorReviewsPage() {
   const filtered = filter === 'All' || filter === 'सभी'
     ? reviews
     : reviews.filter(r => Math.round(r.rating) === parseInt(filter))
+
+  if (loading) {
+    return (
+      <div style={{
+        background: 'var(--gradient-page)',
+        minHeight: '100vh',
+        padding: '88px 24px 60px',
+        maxWidth: 720,
+        margin: '0 auto',
+        textAlign: 'center'
+      }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+        <p>{t('loading')}</p>
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -135,10 +150,12 @@ export default function VendorReviewsPage() {
         fontWeight: 700, fontSize: 28, marginBottom: 4,
         color: 'var(--ink)'
       }}>
-        ⭐ {lang === 'hi' ? 'मेरी समीक्षाएं' : 'My Reviews'}
+        ⭐ {lang === 'hi' ? 'मेरी दुकान की समीक्षाएं' : 'My Shop Reviews'}
       </h1>
       <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 32 }}>
-        {lang === 'hi' ? 'खोजकर्ता आपकी दुकान के बारे में क्या कह रहे हैं' : 'What explorers are saying about your shop'}
+        {lang === 'hi' 
+          ? 'खोजकर्ता आपकी दुकान के बारे में क्या कह रहे हैं' 
+          : 'What explorers are saying about your shop'}
       </p>
 
       {reviews.length > 0 && (
@@ -234,12 +251,7 @@ export default function VendorReviewsPage() {
         </div>
       )}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <p>{t('loading')}</p>
-        </div>
-      ) : reviews.length === 0 ? (
+      {reviews.length === 0 ? (
         <div style={{
           background: 'var(--surface)',
           border: '1px solid var(--border)',
@@ -256,7 +268,9 @@ export default function VendorReviewsPage() {
             {lang === 'hi' ? 'अभी तक कोई समीक्षा नहीं' : 'No reviews yet'}
           </h3>
           <p style={{ fontSize: 14, color: 'var(--muted)' }}>
-            {lang === 'hi' ? 'समीक्षाएं यहां दिखेंगी' : 'Reviews will appear here once explorers rate your listings'}
+            {lang === 'hi' 
+              ? 'जब ग्राहक आपकी दुकान को रेटिंग देंगे तो समीक्षाएं यहां दिखेंगी' 
+              : 'Reviews will appear here once customers rate your shop'}
           </p>
         </div>
       ) : filtered.length === 0 ? (
@@ -268,11 +282,13 @@ export default function VendorReviewsPage() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {filtered.map((r, i) => (
-            <ReviewCard key={r._id || i} review={r} />
+          {filtered.map((review, i) => (
+            <ReviewCard key={review._id || i} review={review} />
           ))}
         </div>
       )}
+
+      {/* NO REVIEW SUBMISSION FORM HERE - VENDORS CAN ONLY VIEW */}
     </div>
   )
 }

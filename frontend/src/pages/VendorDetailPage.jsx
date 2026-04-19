@@ -1,20 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { vendorsAPI } from '../services/api';
+import { vendorsAPI, reviewsAPI } from '../services/api';
 import { useLang } from '../context/LanguageContext';
+import { useAuth } from '../context/authcontext';
 
 export default function VendorDetailPage() {
   const { id } = useParams();
-   console.log('🔵 VendorDetailPage mounted with ID:', id);  
   const { t, lang } = useLang();
+  const { user } = useAuth();
   
   const [vendor, setVendor] = useState(null);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('menu');
+  const [newReview, setNewReview] = useState({ rating: 5, comment: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    fetchVendorDetails();
+    if (id) {
+      fetchVendorDetails();
+      fetchVendorReviews();
+    }
   }, [id]);
 
   const fetchVendorDetails = async () => {
@@ -29,7 +37,85 @@ export default function VendorDetailPage() {
     }
   };
 
-  // Check if vendor is open now
+  const fetchVendorReviews = async () => {
+    try {
+      const response = await reviewsAPI.getForVendor(id);
+      setReviews(response.data?.data || []);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+      setReviews([]);
+    }
+  };
+
+  const submitReview = async (e) => {
+    e.preventDefault();
+    setReviewMessage({ type: '', text: '' });
+    
+    if (!user) {
+      setReviewMessage({ 
+        type: 'error', 
+        text: lang === 'hi' ? 'कृपया समीक्षा लिखने के लिए लॉगिन करें' : 'Please login to leave a review' 
+      });
+      setTimeout(() => setReviewMessage({ type: '', text: '' }), 3000);
+      return;
+    }
+    
+    if (!newReview.comment.trim()) {
+      setReviewMessage({ 
+        type: 'error', 
+        text: lang === 'hi' ? 'कृपया एक टिप्पणी लिखें' : 'Please write a comment' 
+      });
+      setTimeout(() => setReviewMessage({ type: '', text: '' }), 3000);
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const reviewData = {
+        rating: parseInt(newReview.rating),
+        comment: newReview.comment.trim(),
+        vendorId: id
+      };
+      
+      console.log('Submitting review:', reviewData);
+      console.log('User:', user);
+      
+      const response = await reviewsAPI.addForVendor(reviewData);
+      console.log('Review submitted successfully:', response.data);
+      
+      setNewReview({ rating: 5, comment: '' });
+      setReviewMessage({ 
+        type: 'success', 
+        text: lang === 'hi' ? '✅ समीक्षा सफलतापूर्वक सबमिट हुई!' : '✅ Review submitted successfully!' 
+      });
+      
+      // Refresh reviews and vendor data
+      await fetchVendorReviews();
+      await fetchVendorDetails();
+      
+      setTimeout(() => setReviewMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
+      let errorMessage = lang === 'hi' ? '❌ समीक्षा सबमिट करने में विफल' : '❌ Failed to submit review';
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setReviewMessage({ type: 'error', text: errorMessage });
+      setTimeout(() => setReviewMessage({ type: '', text: '' }), 5000);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getOperatingStatus = () => {
     if (!vendor?.operatingHours?.length) {
       return { isOpen: false, message: lang === 'hi' ? 'समय निर्धारित नहीं' : 'Hours not set' };
@@ -106,7 +192,6 @@ export default function VendorDetailPage() {
           background: 'linear-gradient(to bottom, transparent 50%, var(--bg))'
         }} />
         
-        {/* Back Button */}
         <Link to="/vendors" style={{
           position: 'absolute',
           top: 20,
@@ -126,7 +211,7 @@ export default function VendorDetailPage() {
         </Link>
       </div>
       
-      {/* Vendor Info Card - Floating over the cover image */}
+      {/* Vendor Info Card */}
       <div style={{ maxWidth: 1000, margin: '-50px auto 0', padding: '0 20px', position: 'relative', zIndex: 2 }}>
         <div style={{
           background: 'var(--card-bg)',
@@ -148,14 +233,21 @@ export default function VendorDetailPage() {
               </h1>
               
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                <span className="badge-mint" style={{ background: 'var(--mint-soft)', color: 'var(--mint-dark)' }}>
-                  {vendor.shopType}
-                </span>
+                <span className="badge-mint">{vendor.shopType}</span>
                 
                 {vendor.isLive && (
-                  <span className="badge-live" style={{ background: 'var(--mint-soft)', color: 'var(--mint-dark)' }}>
-                    <span className="live-dot" style={{ background: 'var(--mint)' }} />
-                    {t('live')}
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '3px 10px',
+                    borderRadius: 100,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    background: '#dcfce7',
+                    color: '#166534'
+                  }}>
+                    🟢 {t('live')}
                   </span>
                 )}
                 
@@ -183,18 +275,11 @@ export default function VendorDetailPage() {
               <div style={{ fontSize: 14, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>📞</span> {vendor.phone}
               </div>
-              
-              {vendor.email && (
-                <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>✉️</span> {vendor.email}
-                </div>
-              )}
             </div>
             
-            {/* Rating Section */}
             {vendor.averageRating > 0 && (
               <div style={{ textAlign: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: 40, fontWeight: 800, color: 'var(--mint)', fontFamily: 'Syne, sans-serif' }}>
+                <div style={{ fontSize: 40, fontWeight: 800, color: 'var(--mint)' }}>
                   {vendor.averageRating.toFixed(1)}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>
@@ -208,7 +293,6 @@ export default function VendorDetailPage() {
             )}
           </div>
           
-          {/* Description */}
           {vendor.description && (
             <p style={{
               marginTop: 20,
@@ -226,7 +310,6 @@ export default function VendorDetailPage() {
       
       {/* Tabs Section */}
       <div style={{ maxWidth: 1000, margin: '40px auto', padding: '0 20px' }}>
-        {/* Tab Buttons */}
         <div style={{
           display: 'flex',
           gap: 8,
@@ -235,65 +318,39 @@ export default function VendorDetailPage() {
         }}>
           <button
             onClick={() => setActiveTab('menu')}
-            style={{
-              padding: '10px 24px',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 15,
-              fontWeight: activeTab === 'menu' ? 600 : 400,
-              color: activeTab === 'menu' ? 'var(--mint)' : 'var(--muted)',
-              borderBottom: activeTab === 'menu' ? `2px solid var(--mint)` : 'none',
-              marginBottom: -2,
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}
+            style={tabStyle(activeTab === 'menu')}
           >
             <span>🍽️</span> {lang === 'hi' ? 'मेनू' : 'Menu'}
           </button>
           <button
             onClick={() => setActiveTab('info')}
-            style={{
-              padding: '10px 24px',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 15,
-              fontWeight: activeTab === 'info' ? 600 : 400,
-              color: activeTab === 'info' ? 'var(--mint)' : 'var(--muted)',
-              borderBottom: activeTab === 'info' ? `2px solid var(--mint)` : 'none',
-              marginBottom: -2,
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}
+            style={tabStyle(activeTab === 'info')}
           >
             <span>ℹ️</span> {lang === 'hi' ? 'जानकारी' : 'Info'}
           </button>
+          <button
+            onClick={() => setActiveTab('reviews')}
+            style={tabStyle(activeTab === 'reviews')}
+          >
+            <span>⭐</span> {lang === 'hi' ? 'समीक्षाएं' : 'Reviews'} ({reviews.length})
+          </button>
         </div>
         
-        {/* Menu Tab Content */}
+        {/* Menu Tab */}
         {activeTab === 'menu' && (
           <div>
             {vendor.menu && vendor.menu.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {vendor.menu.map((item, idx) => (
-                  <div
-                    key={item._id || idx}
-                    style={{
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      padding: '16px 20px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      transition: 'all 0.2s'
-                    }}
-                  >
+                  <div key={item._id || idx} style={{
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 16,
+                    padding: '16px 20px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                         <h4 style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)', margin: 0 }}>
@@ -320,8 +377,7 @@ export default function VendorDetailPage() {
                       <div style={{
                         fontSize: 20,
                         fontWeight: 700,
-                        color: 'var(--mint)',
-                        fontFamily: 'Syne, sans-serif'
+                        color: 'var(--mint)'
                       }}>
                         ₹{item.price}
                       </div>
@@ -339,122 +395,202 @@ export default function VendorDetailPage() {
                 ))}
               </div>
             ) : (
-              <div style={{
-                textAlign: 'center',
-                padding: '60px',
-                background: 'var(--surface)',
-                borderRadius: 20,
-                border: '1px dashed var(--border)'
-              }}>
+              <div style={{ textAlign: 'center', padding: '60px', background: 'var(--surface)', borderRadius: 20 }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
-                <h3 style={{ color: 'var(--ink)', marginBottom: 8 }}>{lang === 'hi' ? 'कोई मेनू आइटम नहीं' : 'No Menu Items'}</h3>
-                <p style={{ color: 'var(--muted)' }}>
-                  {lang === 'hi' ? 'इस विक्रेता ने अभी तक कोई मेनू नहीं जोड़ा है' : 'This vendor hasn\'t added any menu items yet'}
-                </p>
+                <h3>{lang === 'hi' ? 'कोई मेनू आइटम नहीं' : 'No Menu Items'}</h3>
+                <p>{lang === 'hi' ? 'इस विक्रेता ने अभी तक कोई मेनू नहीं जोड़ा है' : 'This vendor hasn\'t added any menu items yet'}</p>
               </div>
             )}
           </div>
         )}
         
-        {/* Info Tab Content */}
+        {/* Info Tab */}
         {activeTab === 'info' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Operating Hours */}
             {vendor.operatingHours && vendor.operatingHours.length > 0 && (
-              <div style={{
-                background: 'var(--surface)',
-                borderRadius: 20,
-                padding: 24,
-                border: '1px solid var(--border)'
-              }}>
-                <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, marginBottom: 16, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>🕐</span> {lang === 'hi' ? 'खुलने का समय' : 'Operating Hours'}
-                </h3>
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, border: '1px solid var(--border)' }}>
+                <h3>🕐 {lang === 'hi' ? 'खुलने का समय' : 'Operating Hours'}</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {vendor.operatingHours.map((hours, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: '8px 0',
-                      borderBottom: idx < vendor.operatingHours.length - 1 ? '1px solid var(--border)' : 'none'
-                    }}>
-                      <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{hours.day}</span>
-                      <span style={{ color: hours.isClosed ? '#dc2626' : 'var(--muted)' }}>
-                        {hours.isClosed 
-                          ? (lang === 'hi' ? 'बंद' : 'Closed')
-                          : `${hours.open || '--'} - ${hours.close || '--'}`}
-                      </span>
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                      <span style={{ fontWeight: 600 }}>{hours.day}</span>
+                      <span>{hours.isClosed ? 'Closed' : `${hours.open} - ${hours.close}`}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
             
-            {/* Features / Amenities */}
             {vendor.features && vendor.features.length > 0 && (
-              <div style={{
-                background: 'var(--surface)',
-                borderRadius: 20,
-                padding: 24,
-                border: '1px solid var(--border)'
-              }}>
-                <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, marginBottom: 16, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>✨</span> {lang === 'hi' ? 'सुविधाएं' : 'Features & Amenities'}
-                </h3>
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, border: '1px solid var(--border)' }}>
+                <h3>✨ {lang === 'hi' ? 'सुविधाएं' : 'Features'}</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {vendor.features.map((feature, idx) => (
-                    <span key={idx} style={{ padding: '6px 14px', borderRadius: 100, background: 'var(--mint-soft)', color: 'var(--mint-dark)', fontSize: 13 }}>
-                      {feature}
-                    </span>
+                    <span key={idx} className="badge-mint">{feature}</span>
                   ))}
                 </div>
               </div>
             )}
             
-            {/* Payment Methods */}
             {vendor.paymentMethods && vendor.paymentMethods.length > 0 && (
-              <div style={{
-                background: 'var(--surface)',
-                borderRadius: 20,
-                padding: 24,
-                border: '1px solid var(--border)'
-              }}>
-                <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, marginBottom: 16, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>💳</span> {lang === 'hi' ? 'भुगतान के तरीके' : 'Payment Methods'}
-                </h3>
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, border: '1px solid var(--border)' }}>
+                <h3>💳 {lang === 'hi' ? 'भुगतान के तरीके' : 'Payment Methods'}</h3>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {vendor.paymentMethods.map((method, idx) => (
-                    <span key={idx} style={{ padding: '6px 14px', borderRadius: 100, background: 'var(--mint-soft)', color: 'var(--mint-dark)', fontSize: 13 }}>
-                      {method}
-                    </span>
+                    <span key={idx} className="badge-mint">{method}</span>
                   ))}
                 </div>
               </div>
             )}
             
-            {/* Contact Actions */}
-            <div style={{
-              background: 'var(--surface)',
-              borderRadius: 20,
-              padding: 24,
-              border: '1px solid var(--border)',
-              textAlign: 'center'
-            }}>
-              <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, marginBottom: 16, color: 'var(--ink)' }}>
-                {lang === 'hi' ? 'संपर्क करें' : 'Contact Shop'}
-              </h3>
+            <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, border: '1px solid var(--border)', textAlign: 'center' }}>
+              <h3>📞 {lang === 'hi' ? 'संपर्क करें' : 'Contact Shop'}</h3>
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <a href={`tel:${vendor.phone}`} className="btn-primary" style={{ textDecoration: 'none' }}>
                   📞 {lang === 'hi' ? 'कॉल करें' : 'Call Now'}
                 </a>
-                <a href={`https://wa.me/${vendor.phone}`} target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ textDecoration: 'none' }}>
+                <a href={`https://wa.me/${vendor.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ textDecoration: 'none' }}>
                   💬 WhatsApp
                 </a>
               </div>
             </div>
           </div>
         )}
+        
+        {/* Reviews Tab - EXPLORER CAN SUBMIT REVIEWS HERE */}
+        {activeTab === 'reviews' && (
+          <div>
+            {/* Review Message */}
+            {reviewMessage.text && (
+              <div style={{
+                marginBottom: 20,
+                padding: '12px 16px',
+                borderRadius: 12,
+                background: reviewMessage.type === 'success' ? '#dcfce7' : '#fee2e2',
+                color: reviewMessage.type === 'success' ? '#166534' : '#991b1b',
+                border: `1px solid ${reviewMessage.type === 'success' ? '#bbf7d0' : '#fecaca'}`
+              }}>
+                {reviewMessage.text}
+              </div>
+            )}
+
+            {/* Review Submission Form - Only for logged-in explorers (not vendors) */}
+            {user && user.role !== 'seller' && user.role !== 'vendor' && (
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, marginBottom: 24 }}>
+                <h3 style={{ fontSize: 18, marginBottom: 16 }}>
+                  ✍️ {lang === 'hi' ? 'अपनी समीक्षा लिखें' : 'Write a Review'}
+                </h3>
+                <form onSubmit={submitReview}>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>
+                      {lang === 'hi' ? 'रेटिंग' : 'Rating'}
+                    </label>
+                    <select
+                      value={newReview.rating}
+                      onChange={(e) => setNewReview({ ...newReview, rating: parseInt(e.target.value) })}
+                      className="select"
+                      style={{ width: 'auto', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)' }}
+                    >
+                      <option value={5}>⭐⭐⭐⭐⭐ {lang === 'hi' ? 'बहुत अच्छा' : 'Excellent'}</option>
+                      <option value={4}>⭐⭐⭐⭐ {lang === 'hi' ? 'अच्छा' : 'Good'}</option>
+                      <option value={3}>⭐⭐⭐ {lang === 'hi' ? 'औसत' : 'Average'}</option>
+                      <option value={2}>⭐⭐ {lang === 'hi' ? 'खराब' : 'Poor'}</option>
+                      <option value={1}>⭐ {lang === 'hi' ? 'बहुत खराब' : 'Terrible'}</option>
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>
+                      {lang === 'hi' ? 'टिप्पणी' : 'Comment'}
+                    </label>
+                    <textarea
+                      value={newReview.comment}
+                      onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                      className="input"
+                      rows="4"
+                      placeholder={lang === 'hi' ? 'अपना अनुभव साझा करें...' : 'Share your experience...'}
+                      required
+                      style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)' }}
+                    />
+                  </div>
+                  <button 
+                    type="submit" 
+                    className="btn-primary" 
+                    disabled={submitting}
+                    style={{ padding: '12px 24px', background: 'var(--mint)', color: 'white', border: 'none', borderRadius: 40, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {submitting ? (lang === 'hi' ? 'सबमिट हो रहा...' : 'Submitting...') : (lang === 'hi' ? 'समीक्षा सबमिट करें' : 'Submit Review')}
+                  </button>
+                </form>
+              </div>
+            )}
+            
+            {/* Show login prompt for non-logged in users */}
+            {!user && (
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, marginBottom: 24, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🔐</div>
+                <p style={{ marginBottom: 16 }}>{lang === 'hi' ? 'समीक्षा लिखने के लिए लॉगिन करें' : 'Login to write a review'}</p>
+                <Link to="/login" className="btn-primary" style={{ display: 'inline-block' }}>
+                  {lang === 'hi' ? 'लॉगिन करें' : 'Login'}
+                </Link>
+              </div>
+            )}
+            
+            {/* Show message for vendors (they can't review their own shop) */}
+            {user && (user.role === 'seller' || user.role === 'vendor') && (
+              <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, marginBottom: 24, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🏪</div>
+                <p style={{ marginBottom: 16 }}>{lang === 'hi' ? 'आप अपनी खुद की दुकान की समीक्षा नहीं कर सकते' : 'You cannot review your own shop'}</p>
+              </div>
+            )}
+            
+            {/* Reviews List */}
+            {reviews.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {reviews.map((review, idx) => (
+                  <div key={review._id || idx} style={{ background: 'var(--surface)', borderRadius: 16, padding: 20, border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{review.user?.name || review.userName || 'Anonymous'}</span>
+                        <div style={{ fontSize: 14, marginTop: 4 }}>
+                          {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                        {review.createdAt ? new Date(review.createdAt).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-US') : 'Recently'}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>"{review.comment}"</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '60px', background: 'var(--surface)', borderRadius: 20 }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⭐</div>
+                <h3 style={{ marginBottom: 8 }}>{lang === 'hi' ? 'अभी तक कोई समीक्षा नहीं' : 'No reviews yet'}</h3>
+                <p style={{ color: 'var(--muted)' }}>
+                  {lang === 'hi' ? 'बनें पहले समीक्षक!' : 'Be the first to review!'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+const tabStyle = (isActive) => ({
+  padding: '10px 24px',
+  background: 'transparent',
+  border: 'none',
+  cursor: 'pointer',
+  fontSize: 15,
+  fontWeight: isActive ? 600 : 400,
+  color: isActive ? 'var(--mint)' : 'var(--muted)',
+  borderBottom: isActive ? `2px solid var(--mint)` : 'none',
+  marginBottom: -2,
+  transition: 'all 0.2s',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8
+});

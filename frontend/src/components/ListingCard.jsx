@@ -39,8 +39,12 @@ export default function ListingCard({ listing, delay = 0 }) {
   const category = listing.category?.toLowerCase() || "default"
   const emoji = EMOJI_MAP[category] ?? EMOJI_MAP.default
   const colors = COLOR_MAP[category] ?? COLOR_MAP.default
-  const image = listing.image || IMAGE_MAP[category] || IMAGE_MAP.default
-
+const image =
+  listing.coverImage ||
+  listing.image ||
+  listing.galleryImages?.[0] ||
+  IMAGE_MAP[category] ||
+  IMAGE_MAP.default
   return (
     <Link
       to={`/listings/${listing._id}`}

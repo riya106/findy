@@ -2,7 +2,7 @@ import axios from "axios"
 
 // Base API instance
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api",
+  baseURL: "https://findy-backend.onrender.com/api",
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
@@ -41,6 +41,12 @@ export const authAPI = {
   register: (data) => api.post("/user/register", data),
 }
 
+// ─── User APIs (Location Management) ─────────────────────
+export const userAPI = {
+  updateLocation: (data) => api.put("/user/location", data),
+  getLocation: () => api.get("/user/location"),
+}
+
 // ─── Listings APIs ───────────────────────────────────────
 export const listingsAPI = {
   getAll: () => api.get("/listing/all"),
@@ -49,8 +55,13 @@ export const listingsAPI = {
 
 // ─── Reviews APIs ────────────────────────────────────────
 export const reviewsAPI = {
+  // For listings
   getForListing: (id) => api.get(`/review/listing/${id}`),
   add: (data) => api.post("/review/add", data),
+  
+  // For vendors
+  getForVendor: (vendorId) => api.get(`/review/vendor/${vendorId}`),
+  addForVendor: (data) => api.post("/review/vendor", data),
 }
 
 // ─── Enquiries APIs ──────────────────────────────────────
@@ -82,13 +93,15 @@ export const workersAPI = {
   getMyWorker: () => api.get("/workers/me"),
   update: (id, data) => api.put(`/workers/${id}`, data),
   addPortfolio: (id, data) => api.post(`/workers/${id}/portfolio`, data),
+  deletePortfolioItem: (id, itemId) => api.delete(`/workers/${id}/portfolio/${itemId}`),
   addReview: (id, data) => api.post(`/workers/${id}/review`, data),
   updateAvailability: (id, data) => api.put(`/workers/${id}/availability`, data),
   toggleAvailability: (id) => api.patch(`/workers/${id}/toggle-availability`),
 }
+
 // ─── Around APIs ─────────────────────────────────────────
 export const aroundAPI = {
-  getNearby: (lat, lng) => api.get(`/around?lat=${lat}&lng=${lng}`),
+  getNearby: (lat, lng, radius) => api.get(`/around?lat=${lat}&lng=${lng}&radius=${radius || 2000}`),
 }
 
 export default api

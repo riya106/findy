@@ -4,89 +4,167 @@ import { useAuth } from '../context/authcontext'
 import { useLang } from '../context/LanguageContext'
 import { authAPI } from '../services/api'
 
-const ROLES_EN = [
-  { value: 'explorer', label: '🗺️ Explorer — browse & discover', desc: 'Find local services & shops' },
-  { value: 'seller',   label: '🏪 Vendor — list your shop',      desc: 'Sell products & go live' },
-  { value: 'worker',   label: '👷 Worker — offer your skills',   desc: 'Get hired for local work' },
-]
-
-const ROLES_HI = [
-  { value: 'explorer', label: '🗺️ खोजकर्ता — ब्राउज़ करें', desc: 'स्थानीय सेवाएं खोजें' },
-  { value: 'seller',   label: '🏪 विक्रेता — दुकान लिस्ट करें', desc: 'उत्पाद बेचें' },
-  { value: 'worker',   label: '👷 कर्मचारी — कौशल दिखाएं', desc: 'काम पाएं' },
-]
-
 export default function SignupPage() {
   const { login } = useAuth()
   const { t, lang } = useLang()
   const navigate = useNavigate()
 
-  const ROLES = lang === 'hi' ? ROLES_HI : ROLES_EN
-
   const [form, setForm] = useState({
     name: '', email: '', phone: '', password: '', role: 'explorer'
+  })
+
+  const [savedLocation, setSavedLocation] = useState({
+    fullAddress: '',
+    pincode: '',
+    city: '',
+    district: '',
+    state: '',
+    area: '',
+    landmark: '',
+    lat: null,
+    lng: null
   })
 
   const [coords, setCoords] = useState(null)
   const [locationStatus, setLocationStatus] = useState('asking')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [addressInput, setAddressInput] = useState('')
+  const [addressSuggestions, setAddressSuggestions] = useState([])
 
   useEffect(() => { requestLocation() }, [])
 
   const requestLocation = () => {
     setLocationStatus('asking')
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        setLocationStatus('granted')
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setCoords({ lat, lng });
+        setLocationStatus('granted');
+        
+        // Get FULL ADDRESS from coordinates
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`
+          );
+          const data = await response.json();
+          
+          const address = data.display_name || '';
+          const addressDetails = data.address || {};
+          
+          setSavedLocation({
+            fullAddress: address,
+            pincode: addressDetails.postcode || '',
+            city: addressDetails.city || addressDetails.town || addressDetails.village || '',
+            district: addressDetails.district || addressDetails.county || '',
+            state: addressDetails.state || '',
+            area: addressDetails.suburb || addressDetails.neighbourhood || addressDetails.village || '',
+            landmark: addressDetails.amenity || addressDetails.road || '',
+            lat: lat,
+            lng: lng
+          });
+          
+          setAddressInput(address);
+        } catch (err) {
+          console.error("Error getting address:", err);
+        }
       },
       () => setLocationStatus('denied')
-    )
-  }
+    );
+  };
 
-  const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value })
+  const searchAddress = async () => {
+    if (!addressInput.trim()) {
+      setError('Please enter an address');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressInput)}&format=json&addressdetails=1&limit=5`
+      );
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        setAddressSuggestions(data);
+        setError('');
+      } else {
+        setError('No address found. Please try a different search.');
+      }
+    } catch (err) {
+      setError('Failed to search address');
+    }
+    setLoading(false);
+  };
+
+  const selectAddress = (addressData) => {
+    const addressDetails = addressData.address || {};
+    
+    setSavedLocation({
+      fullAddress: addressData.display_name,
+      pincode: addressDetails.postcode || '',
+      city: addressDetails.city || addressDetails.town || addressDetails.village || '',
+      district: addressDetails.district || addressDetails.county || '',
+      state: addressDetails.state || '',
+      area: addressDetails.suburb || addressDetails.neighbourhood || addressDetails.village || '',
+      landmark: addressDetails.amenity || addressDetails.road || '',
+      lat: parseFloat(addressData.lat),
+      lng: parseFloat(addressData.lon)
+    });
+    
+    setAddressInput(addressData.display_name);
+    setAddressSuggestions([]);
+    setCoords({ lat: parseFloat(addressData.lat), lng: parseFloat(addressData.lon) });
+  };
+
+  const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const redirectByRole = (role) => {
-    if (role === 'seller') navigate('/vendor-dashboard')
-    else if (role === 'worker') navigate('/worker-dashboard')
-    else navigate('/listings')
-  }
+    if (role === 'seller') navigate('/vendor-dashboard');
+    else if (role === 'worker') navigate('/worker-dashboard');
+    else navigate('/listings');
+  };
 
   const submit = async (e) => {
-    e.preventDefault()
-    setError('')
+    e.preventDefault();
+    setError('');
+    
     if (!form.name || !form.email || !form.phone || !form.password) {
-      setError(t('auth.errorFill'))
-      return
+      setError('Please fill all fields');
+      return;
     }
-    setLoading(true)
+    
+    if (!savedLocation.fullAddress) {
+      setError('Please enter your address');
+      return;
+    }
+    
+    setLoading(true);
     try {
       const payload = {
         ...form,
+        savedLocation: savedLocation,
         ...(coords && { location: { latitude: coords.lat, longitude: coords.lng } })
-      }
-      const { data } = await authAPI.register(payload)
+      };
+      
+      const { data } = await authAPI.register(payload);
+      
       if (!data.user || !data.token) {
-        setError(data.message || t('auth.registerFailed'))
-        setLoading(false)
-        return
+        setError(data.message || 'Registration failed');
+        setLoading(false);
+        return;
       }
-      login(data.user, data.token)
-      redirectByRole(data.user.role)
+      
+      login(data.user, data.token);
+      redirectByRole(data.user.role);
     } catch (err) {
-      setError(err.response?.data?.message ?? t('auth.registerFailed'))
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
-
-  const fields = [
-    { name: 'name', label: t('auth.fullName'), type: 'text', placeholder: t('auth.namePlaceholder') },
-    { name: 'email', label: t('auth.email'), type: 'email', placeholder: 'you@email.com' },
-    { name: 'phone', label: t('auth.phone'), type: 'tel', placeholder: '9876543210' },
-    { name: 'password', label: t('auth.password'), type: 'password', placeholder: '••••••••' },
-  ]
+  };
 
   return (
     <div style={{
@@ -95,7 +173,7 @@ export default function SignupPage() {
       display: 'flex', alignItems: 'center',
       justifyContent: 'center', padding: '40px 20px',
     }}>
-      <div style={{ width: '100%', maxWidth: 480 }}>
+      <div style={{ width: '100%', maxWidth: 550 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center',
@@ -112,7 +190,7 @@ export default function SignupPage() {
               fontFamily: 'Syne, sans-serif',
               fontWeight: 800, fontSize: 28, color: 'var(--mint)'
             }}>
-              {t('appName')}
+              Findy
             </span>
           </div>
           <h1 style={{
@@ -120,10 +198,10 @@ export default function SignupPage() {
             fontWeight: 700, fontSize: 26, marginBottom: 8,
             color: 'var(--ink)'
           }}>
-            {t('auth.createAccount')}
+            Create Account
           </h1>
           <p style={{ fontSize: 14, color: 'var(--muted)' }}>
-            {t('auth.joinSub')}
+            Join our community
           </p>
         </div>
 
@@ -144,114 +222,160 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Location Banner */}
-          <div style={{
-            marginBottom: 24, padding: '12px 16px',
-            borderRadius: 12, fontSize: 13,
-            display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between',
-            background: locationStatus === 'granted' ? 'var(--mint-soft)'
-              : locationStatus === 'denied' ? '#fef2f2' : '#fffbeb',
-            border: `1px solid ${locationStatus === 'granted' ? 'var(--border)'
-              : locationStatus === 'denied' ? '#fca5a5' : '#fde68a'}`
-          }}>
-            <span style={{
-              color: locationStatus === 'granted' ? 'var(--mint)'
-                : locationStatus === 'denied' ? '#dc2626' : '#92400e',
-              fontWeight: 500
-            }}>
-              {locationStatus === 'granted' && `✅ ${lang === 'hi' ? 'लोकेशन कैप्चर हुई' : 'Location captured'}`}
-              {locationStatus === 'denied' && `❌ ${lang === 'hi' ? 'लोकेशन अस्वीकृत' : 'Location denied'}`}
-              {locationStatus === 'asking' && `📍 ${lang === 'hi' ? 'लोकेशन मांग रहे हैं' : 'Requesting location...'}`}
-            </span>
-            {locationStatus === 'denied' && (
-              <button type="button" onClick={requestLocation} style={{
-                fontSize: 12, padding: '4px 12px', borderRadius: 8,
-                border: '1px solid #fca5a5', background: '#fff',
-                color: '#dc2626', cursor: 'pointer'
-              }}>
-                {lang === 'hi' ? 'पुनः प्रयास करें' : 'Try again'}
+          {/* FULL ADDRESS Section */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>
+              📍 Your Full Address
+            </label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input
+                type="text"
+                placeholder="Enter your full address (e.g., House No., Street, Area, City)"
+                value={addressInput}
+                onChange={(e) => setAddressInput(e.target.value)}
+                className="input"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={searchAddress}
+                className="btn-primary"
+                style={{ padding: '11px 20px' }}
+                disabled={loading}
+              >
+                {loading ? 'Searching...' : 'Search'}
               </button>
+            </div>
+            
+            {/* Address Suggestions */}
+            {addressSuggestions.length > 0 && (
+              <div style={{
+                marginTop: 8,
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                overflow: 'hidden',
+                background: 'var(--surface)'
+              }}>
+                {addressSuggestions.map((suggestion, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => selectAddress(suggestion)}
+                    style={{
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      borderBottom: idx < addressSuggestions.length - 1 ? '1px solid var(--border)' : 'none',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--mint-soft)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ fontSize: 13, color: 'var(--ink)' }}>{suggestion.display_name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                      📍 Lat: {suggestion.lat}, Lng: {suggestion.lon}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
+            
+            {/* Selected Address Display */}
+            {savedLocation.fullAddress && (
+              <div style={{
+                marginTop: 12,
+                padding: 12,
+                background: 'var(--mint-soft)',
+                borderRadius: 12,
+                fontSize: 13
+              }}>
+                <div><strong>📍 Full Address:</strong> {savedLocation.fullAddress}</div>
+                {savedLocation.area && <div><strong>🏘️ Area:</strong> {savedLocation.area}</div>}
+                {savedLocation.city && <div><strong>🏙️ City:</strong> {savedLocation.city}</div>}
+                {savedLocation.district && <div><strong>🗺️ District:</strong> {savedLocation.district}</div>}
+                {savedLocation.state && <div><strong>📌 State:</strong> {savedLocation.state}</div>}
+                {savedLocation.pincode && <div><strong>📮 PIN Code:</strong> {savedLocation.pincode}</div>}
+              </div>
+            )}
+            
+            <button
+              type="button"
+              onClick={requestLocation}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                padding: '10px',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 13
+              }}
+            >
+              📍 Use My Current Location
+            </button>
           </div>
 
           {/* Input Fields */}
-          {fields.map(({ name, label, type, placeholder }) => (
-            <div key={name} style={{ marginBottom: 16 }}>
-              <label style={{
-                display: 'block', fontSize: 13, fontWeight: 600,
-                color: 'var(--ink)', marginBottom: 8
-              }}>
-                {label}
-              </label>
-              <input
-                className="input" type={type} name={name}
-                placeholder={placeholder} value={form[name]}
-                onChange={handle}
-                style={{
-                  border: '1.5px solid var(--border)',
-                  borderRadius: 12, fontSize: 14,
-                  padding: '12px 16px', width: '100%',
-                  boxSizing: 'border-box',
-                  background: 'var(--input-bg)',
-                  color: 'var(--ink)'
-                }}
-              />
-            </div>
-          ))}
+          <div style={{ marginBottom: 16 }}>
+            <input
+              className="input" type="text" name="name"
+              placeholder="Full Name"
+              value={form.name} onChange={handle}
+              style={{ width: '100%' }}
+            />
+          </div>
+          
+          <div style={{ marginBottom: 16 }}>
+            <input
+              className="input" type="email" name="email"
+              placeholder="Email"
+              value={form.email} onChange={handle}
+              style={{ width: '100%' }}
+            />
+          </div>
+          
+          <div style={{ marginBottom: 16 }}>
+            <input
+              className="input" type="tel" name="phone"
+              placeholder="Phone Number"
+              value={form.phone} onChange={handle}
+              style={{ width: '100%' }}
+            />
+          </div>
+          
+          <div style={{ marginBottom: 24 }}>
+            <input
+              className="input" type="password" name="password"
+              placeholder="Password"
+              value={form.password} onChange={handle}
+              style={{ width: '100%' }}
+            />
+          </div>
 
           {/* Role Selector */}
           <div style={{ marginBottom: 28 }}>
-            <label style={{
-              display: 'block', fontSize: 13, fontWeight: 600,
-              color: 'var(--ink)', marginBottom: 12
-            }}>
-              {t('auth.role')}
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
+              I want to join as:
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {ROLES.map(r => (
+              {[
+                { value: 'explorer', label: '🗺️ Explorer - Browse & Discover', desc: 'Find local services & shops' },
+                { value: 'seller', label: '🏪 Vendor - List Your Shop', desc: 'Sell products & go live' },
+                { value: 'worker', label: '👷 Worker - Offer Your Skills', desc: 'Get hired for local work' },
+              ].map(r => (
                 <div
                   key={r.value}
                   onClick={() => setForm({ ...form, role: r.value })}
                   style={{
                     padding: '14px 18px', borderRadius: 14,
                     cursor: 'pointer',
-                    border: `2px solid ${form.role === r.value
-                      ? 'var(--mint)' : 'var(--border)'}`,
-                    background: form.role === r.value
-                      ? 'var(--gradient-card)'
-                      : 'var(--card-bg)',
-                    transition: 'all 0.2s',
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'space-between',
+                    border: `2px solid ${form.role === r.value ? 'var(--mint)' : 'var(--border)'}`,
+                    background: form.role === r.value ? 'var(--gradient-card)' : 'var(--card-bg)',
                   }}
                 >
-                  <div>
-                    <div style={{
-                      fontSize: 14, fontWeight: 600,
-                      color: form.role === r.value ? 'var(--mint)' : 'var(--ink)',
-                      marginBottom: 2
-                    }}>
-                      {r.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                      {r.desc}
-                    </div>
+                  <div style={{ fontWeight: 600, color: form.role === r.value ? 'var(--mint)' : 'var(--ink)' }}>
+                    {r.label}
                   </div>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: '50%',
-                    border: `2px solid ${form.role === r.value ? 'var(--mint)' : 'var(--border)'}`,
-                    background: form.role === r.value ? 'var(--mint)' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {form.role === r.value && (
-                      <div style={{
-                        width: 8, height: 8,
-                        borderRadius: '50%', background: '#fff'
-                      }} />
-                    )}
-                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{r.desc}</div>
                 </div>
               ))}
             </div>
@@ -267,26 +391,19 @@ export default function SignupPage() {
               background: 'var(--gradient-hero)',
               color: '#fff', fontSize: 16, fontWeight: 700,
               cursor: loading ? 'wait' : 'pointer',
-              transition: 'all 0.2s',
             }}
           >
-            {loading ? `⏳ ${t('auth.creating')}` : `${t('auth.createAccount')}`}
+            {loading ? 'Creating account...' : 'Create Account'}
           </button>
 
-          <p style={{
-            textAlign: 'center', fontSize: 13,
-            color: 'var(--muted)', marginTop: 20
-          }}>
-            {t('auth.haveAccount')}{' '}
-            <Link to="/login" style={{
-              color: 'var(--mint)', fontWeight: 600,
-              textDecoration: 'none'
-            }}>
-              {t('auth.signInLink')}
+          <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginTop: 20 }}>
+            Already have an account?{' '}
+            <Link to="/login" style={{ color: 'var(--mint)', fontWeight: 600, textDecoration: 'none' }}>
+              Sign in
             </Link>
           </p>
         </div>
       </div>
     </div>
-  )
+  );
 }

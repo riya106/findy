@@ -2,26 +2,49 @@ import { useEffect, useState } from "react"
 import { vendorsAPI } from "../services/api"
 import VendorCard from "../components/VendorCard"
 import { useLang } from '../context/LanguageContext'
+import { useAuth } from '../context/authcontext'
 import { Link } from "react-router-dom"
+import { calculateDistance } from "../utils/distance"
 
 export default function VendorsPage() {
   const { t, lang } = useLang()
+  const { user } = useAuth()
   
   const [vendors, setVendors] = useState([])
   const [filtered, setFiltered] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [radius, setRadius] = useState(10)
+
+  const radiusOptions = [
+    { value: 5, label: '5 km' },
+    { value: 10, label: '10 km' },
+    { value: 20, label: '20 km' },
+    { value: 50, label: '50 km' },
+    { value: 70, label: '70 km' },
+    { value: 100, label: '100 km' }
+  ]
 
   useEffect(() => {
     fetchVendors()
-  }, [])
+  }, [user?.savedLocation, radius])
 
   const fetchVendors = async () => {
+    setLoading(true)
     try {
       const response = await vendorsAPI.getLive()
       const items = response.data?.data || []
-      setVendors(items)
-      setFiltered(items)
+      
+      console.log("Total vendors fetched:", items.length)
+      console.log("User location:", user?.savedLocation)
+      console.log("Radius filter:", radius, "km")
+      
+      const filteredByDistance = filterVendorsByDistance(items, user?.savedLocation, radius)
+      
+      console.log("Vendors after distance filter:", filteredByDistance.length)
+      
+      setVendors(filteredByDistance)
+      setFiltered(filteredByDistance)
     } catch (err) {
       console.error("Error fetching vendors:", err)
       setError(lang === 'hi' ? 'विक्रेता लोड नहीं हो सके' : 'Could not load vendors')
@@ -30,6 +53,54 @@ export default function VendorsPage() {
     }
   }
 
+  const filterVendorsByDistance = (vendorsList, userLocation, radiusKm) => {
+    if (!userLocation?.lat || !userLocation?.lng) {
+      console.log("No user location found, showing all vendors")
+      return vendorsList
+    }
+    
+    const filtered = vendorsList.filter(vendor => {
+      const vendorLat = vendor.location?.lat
+      const vendorLng = vendor.location?.lng
+      
+      if (!vendorLat || !vendorLng) {
+        return true
+      }
+      
+      const distance = calculateDistance(
+        userLocation.lat, userLocation.lng,
+        vendorLat, vendorLng
+      )
+      
+      return distance <= radiusKm
+    })
+    
+    return filtered.map(vendor => {
+      const vendorLat = vendor.location?.lat
+      const vendorLng = vendor.location?.lng
+      if (vendorLat && vendorLng && userLocation) {
+        vendor.distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          vendorLat, vendorLng
+        )
+      }
+      return vendor
+    }).sort((a, b) => (a.distance || 999) - (b.distance || 999))
+  }
+
+  const handleRadiusChange = (newRadius) => {
+    console.log("Radius changed to:", newRadius)
+    setRadius(newRadius)
+  }
+
+  const getStats = () => {
+    const total = vendors.length
+    const liveCount = vendors.filter(v => v.isLive).length
+    return { total, liveCount }
+  }
+
+  const stats = getStats()
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -37,16 +108,57 @@ export default function VendorsPage() {
       paddingTop: 88
     }}>
       
-      {/* ==================== BEAUTIFUL INDIAN-THEMED HEADER FOR VENDORS ==================== */}
+      {/* Location and Radius Badge */}
+      {user?.savedLocation?.city && (
+        <div style={{ padding: "0 48px 20px" }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            background: 'var(--mint-soft)',
+            padding: '12px 20px',
+            borderRadius: 100,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>📍</span>
+              <span>Showing vendors within <strong>{radius} km</strong> of <strong>{user.savedLocation.area || user.savedLocation.city}</strong></span>
+              <Link to="/profile" style={{ color: 'var(--mint)', textDecoration: 'none', marginLeft: 4 }}>(Change)</Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12 }}>Radius:</span>
+              <select 
+                value={radius} 
+                onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  fontSize: 12,
+                  cursor: 'pointer'
+                }}
+              >
+                {radiusOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HERO HEADER */}
       <div style={{ padding: "0 48px 28px" }}>
         <div style={{
           borderRadius: 28,
           overflow: "hidden",
           position: "relative",
-          minHeight: 360,
+          minHeight: 320,
           boxShadow: '0 20px 40px -12px rgba(0,0,0,0.25)',
         }}>
-          {/* Background Image - Indian Market/Bazaar */}
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -55,58 +167,13 @@ export default function VendorsPage() {
             backgroundPosition: 'center 35%',
           }} />
           
-          {/* Gradient Overlay - Market/Commerce theme */}
           <div style={{
             position: 'absolute',
             inset: 0,
             background: 'linear-gradient(135deg, rgba(15,184,146,0.85) 0%, rgba(5,146,114,0.75) 50%, rgba(255,153,51,0.4) 100%)',
           }} />
           
-          {/* Decorative Indian Pattern Elements */}
-          <div style={{
-            position: 'absolute',
-            top: -50,
-            right: -50,
-            width: 220,
-            height: 220,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.15) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: -30,
-            left: -30,
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,215,0,0.1) 0%, rgba(255,215,0,0) 70%)',
-          }} />
-          
-          {/* Decorative dots */}
-          <div style={{
-            position: 'absolute',
-            top: '20%',
-            right: '15%',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: 'rgba(255,215,0,0.4)',
-            boxShadow: '0 0 0 12px rgba(255,215,0,0.1), 0 0 0 24px rgba(255,215,0,0.05)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: '25%',
-            left: '10%',
-            width: 5,
-            height: 5,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.3)',
-            boxShadow: '0 0 0 10px rgba(255,255,255,0.08), 0 0 0 20px rgba(255,255,255,0.04)',
-          }} />
-          
-          {/* Content */}
           <div style={{ position: 'relative', zIndex: 2, padding: '50px 40px' }}>
-            {/* Badge */}
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -124,7 +191,6 @@ export default function VendorsPage() {
               </span>
             </div>
             
-            {/* Main Title */}
             <h1 style={{
               fontFamily: "Syne, sans-serif",
               fontWeight: 800,
@@ -152,21 +218,16 @@ export default function VendorsPage() {
               marginBottom: 24,
               lineHeight: 1.5,
             }}>
-              Find authentic street food, local shops, and services in your neighborhood
+              Find authentic street food, local shops, and services within {radius} km of your location
             </p>
             
-            {/* Stats Row */}
             <div style={{
               display: 'flex',
               gap: 30,
               marginTop: 20,
               flexWrap: 'wrap',
             }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 44,
                   height: 44,
@@ -177,20 +238,14 @@ export default function VendorsPage() {
                   justifyContent: 'center',
                   fontSize: 22,
                   backdropFilter: 'blur(8px)',
-                }}>
-                  🏪
-                </div>
+                }}>🏪</div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{vendors.filter(v => v.isLive).length}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{stats.liveCount}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Live Now</div>
                 </div>
               </div>
               
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 44,
                   height: 44,
@@ -201,36 +256,10 @@ export default function VendorsPage() {
                   justifyContent: 'center',
                   fontSize: 22,
                   backdropFilter: 'blur(8px)',
-                }}>
-                  🛍️
-                </div>
+                }}>🛍️</div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{vendors.length}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{stats.total}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Total Vendors</div>
-                </div>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <div style={{
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.15)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  backdropFilter: 'blur(8px)',
-                }}>
-                  📍
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>5km</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Radius</div>
                 </div>
               </div>
             </div>
@@ -238,7 +267,7 @@ export default function VendorsPage() {
         </div>
       </div>
 
-      {/* Results Count & Register Button */}
+      {/* Results Count - Register Button REMOVED */}
       {!loading && (
         <div style={{
           display: "flex",
@@ -250,27 +279,14 @@ export default function VendorsPage() {
         }}>
           <div style={{ fontSize: 13, color: "var(--muted)" }}>
             {lang === 'hi' 
-              ? <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> विक्रेता लाइव हैं</>
-              : <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> vendor{filtered.length !== 1 ? 's' : ''} live now</>
+              ? <><strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> विक्रेता मिले</>
+              : <>Found <strong style={{ color: 'var(--mint)' }}>{filtered.length}</strong> vendor{filtered.length !== 1 ? 's' : ''} within {radius} km</>
             }
           </div>
-          
-          <Link to="/vendor-register" style={{
-            padding: "8px 20px",
-            borderRadius: 100,
-            fontSize: 13,
-            fontWeight: 600,
-            background: "var(--mint)",
-            color: "#fff",
-            textDecoration: "none",
-            transition: "all 0.2s"
-          }}>
-            + {lang === 'hi' ? 'विक्रेता रजिस्टर करें' : 'Register as Vendor'}
-          </Link>
+          {/* Register button removed */}
         </div>
       )}
 
-      {/* LOADING STATE */}
       {loading && (
         <div style={{ textAlign: "center", padding: "60px", color: "var(--muted)" }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
@@ -278,7 +294,6 @@ export default function VendorsPage() {
         </div>
       )}
 
-      {/* ERROR STATE */}
       {error && (
         <div style={{
           margin: "0 48px 20px",
@@ -293,7 +308,6 @@ export default function VendorsPage() {
         </div>
       )}
 
-      {/* Vendors Grid */}
       {!loading && filtered.length > 0 && (
         <div style={{
           padding: '8px 48px 60px',
@@ -302,16 +316,11 @@ export default function VendorsPage() {
           gap: 24,
         }}>
           {filtered.map((vendor, i) => (
-            <VendorCard
-              key={vendor._id || i}
-              vendor={vendor}
-              delay={i * 0.05}
-            />
+            <VendorCard key={vendor._id || i} vendor={vendor} delay={i * 0.05} />
           ))}
         </div>
       )}
 
-      {/* EMPTY STATE */}
       {!loading && filtered.length === 0 && (
         <div style={{
           textAlign: "center",
@@ -322,23 +331,20 @@ export default function VendorsPage() {
           border: "1px dashed var(--border)"
         }}>
           <div style={{ fontSize: 56, marginBottom: 16 }}>🏪</div>
-          <h3 style={{
-            fontFamily: "Syne, sans-serif",
-            fontWeight: 700,
-            fontSize: 20,
-            marginBottom: 8,
-            color: "var(--ink)"
-          }}>
-            {lang === 'hi' ? 'कोई लाइव विक्रेता नहीं' : 'No live vendors'}
+          <h3 style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 20, marginBottom: 8, color: "var(--ink)" }}>
+            No vendors found within {radius} km
           </h3>
-          <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 24 }}>
-            {lang === 'hi'
-              ? 'अभी कोई विक्रेता लाइव नहीं है। बाद में जांचें या विक्रेता बनें!'
-              : 'No vendors are live right now. Check back later or become a vendor!'}
+          <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 16 }}>
+            Try increasing the radius or changing your location
           </p>
-          <Link to="/vendor-register" className="btn-primary" style={{ display: "inline-block" }}>
-            {lang === 'hi' ? 'विक्रेता बनें' : 'Become a Vendor'}
-          </Link>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => handleRadiusChange(20)} className="btn-outline">
+              Increase to 20 km
+            </button>
+            <Link to="/profile" className="btn-primary">
+              Change Location
+            </Link>
+          </div>
         </div>
       )}
     </div>

@@ -33,7 +33,7 @@ export default function Navbar() {
   const vendorLinks = [
     { to: '/vendor-dashboard', labelKey: 'nav.dashboard'    },
     { to: '/vendors',          labelKey: 'nav.liveVendors'  },
-    { to: '/vendor-reviews',   labelKey: 'nav.reviews'      },
+    // { to: '/vendor-reviews',   labelKey: 'nav.reviews'      },  // ← REMOVED - Reviews now in Vendor Detail Page
   ]
 
   const workerLinks = [

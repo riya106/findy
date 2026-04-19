@@ -15,15 +15,28 @@ const reviewSchema = new mongoose.Schema(
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true  // This is required!
+    required: true
+  },
+  userName: {
+    type: String,
+    default: "Anonymous"
   },
   listing: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Listing",
-    required: true
+    ref: "Listing"
+  },
+  vendor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Vendor"
   }
 },
 { timestamps: true }
 );
+
+// Indexes for faster queries
+reviewSchema.index({ vendor: 1, createdAt: -1 });
+reviewSchema.index({ listing: 1, createdAt: -1 });
+reviewSchema.index({ user: 1, vendor: 1 });
+reviewSchema.index({ user: 1, listing: 1 });
 
 module.exports = mongoose.model("Review", reviewSchema);

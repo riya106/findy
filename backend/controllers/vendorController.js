@@ -4,7 +4,7 @@ const User = require("../models/userModel");
 // Register vendor
 const registerVendor = async (req, res) => {
   try {
-    const { name, phone, shopType, description, address, lat, lng, email } = req.body;
+    const { name, phone, shopType, description, address, lat, lng, email, menu, features, paymentMethods, operatingHours } = req.body;
     
     const existingVendor = await Vendor.findOne({ userId: req.user.id });
     if (existingVendor) {
@@ -22,10 +22,10 @@ const registerVendor = async (req, res) => {
       description: description || "",
       address: address || "",
       location: { lat: lat || 0, lng: lng || 0 },
-      paymentMethods: ["Cash", "UPI"],
-      features: [],
-      menu: [],
-      operatingHours: [
+      paymentMethods: paymentMethods || ["Cash", "UPI"],
+      features: features || [],
+      menu: menu || [],
+      operatingHours: operatingHours || [
         { day: "Monday", open: "09:00 AM", close: "09:00 PM", isClosed: false },
         { day: "Tuesday", open: "09:00 AM", close: "09:00 PM", isClosed: false },
         { day: "Wednesday", open: "09:00 AM", close: "09:00 PM", isClosed: false },
@@ -114,7 +114,7 @@ const goLive = async (req, res) => {
   }
 };
 
-// Update vendor
+// Update vendor - FIXED to properly handle menu and nested fields
 const updateVendor = async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.params.id);
@@ -127,10 +127,42 @@ const updateVendor = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
     
+    // Create update object and remove any fields that shouldn't be directly updated
+    const updateData = { ...req.body._doc || req.body };
+    
+    // Remove protected fields
+    delete updateData._id;
+    delete updateData.userId;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    delete updateData.__v;
+    
+    // Handle menu items - ensure they're in the correct format
+    if (updateData.menu && Array.isArray(updateData.menu)) {
+      updateData.menu = updateData.menu.map(item => ({
+        ...item,
+        price: Number(item.price),
+        isAvailable: item.isAvailable !== undefined ? item.isAvailable : true,
+        isVegetarian: item.isVegetarian || false
+      }));
+    }
+    
+    // Handle location
+    if (updateData.location) {
+      updateData.location = {
+        lat: Number(updateData.location.lat) || 0,
+        lng: Number(updateData.location.lng) || 0
+      };
+    }
+    
+    // Handle numeric fields
+    if (updateData.minimumOrderAmount) updateData.minimumOrderAmount = Number(updateData.minimumOrderAmount);
+    if (updateData.deliveryFee) updateData.deliveryFee = Number(updateData.deliveryFee);
+    
     const updatedVendor = await Vendor.findByIdAndUpdate(
       req.params.id,
-      req.body,
-      { new: true }
+      updateData,
+      { new: true, runValidators: true }
     );
     
     res.json({ success: true, data: updatedVendor });
@@ -153,10 +185,21 @@ const addMenuItem = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
     
-    vendor.menu.push(req.body);
+    const newItem = {
+      name: req.body.name,
+      price: Number(req.body.price),
+      description: req.body.description || "",
+      category: req.body.category || "Other",
+      isAvailable: req.body.isAvailable !== undefined ? req.body.isAvailable : true,
+      isVegetarian: req.body.isVegetarian || false
+    };
+    
+    vendor.menu.push(newItem);
     await vendor.save();
     
-    res.json({ success: true, data: vendor.menu });
+    // Return the newly added item with its ID
+    const addedItem = vendor.menu[vendor.menu.length - 1];
+    res.json({ success: true, data: addedItem });
   } catch (error) {
     console.error("Add menu item error:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -181,7 +224,14 @@ const updateMenuItem = async (req, res) => {
       return res.status(404).json({ success: false, message: "Menu item not found" });
     }
     
-    Object.assign(menuItem, req.body);
+    // Update fields
+    if (req.body.name) menuItem.name = req.body.name;
+    if (req.body.price) menuItem.price = Number(req.body.price);
+    if (req.body.description !== undefined) menuItem.description = req.body.description;
+    if (req.body.category) menuItem.category = req.body.category;
+    if (req.body.isAvailable !== undefined) menuItem.isAvailable = req.body.isAvailable;
+    if (req.body.isVegetarian !== undefined) menuItem.isVegetarian = req.body.isVegetarian;
+    
     await vendor.save();
     
     res.json({ success: true, data: vendor.menu });
@@ -204,7 +254,12 @@ const deleteMenuItem = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
     
-    vendor.menu.id(req.params.menuId).remove();
+    const menuItem = vendor.menu.id(req.params.menuId);
+    if (!menuItem) {
+      return res.status(404).json({ success: false, message: "Menu item not found" });
+    }
+    
+    menuItem.deleteOne();
     await vendor.save();
     
     res.json({ success: true, message: "Menu item deleted", data: vendor.menu });
@@ -319,7 +374,7 @@ const deleteGalleryImage = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
     
-    vendor.galleryImages.id(req.params.imageId).remove();
+    vendor.galleryImages.id(req.params.imageId).deleteOne();
     await vendor.save();
     
     res.json({ success: true, message: "Image deleted" });
